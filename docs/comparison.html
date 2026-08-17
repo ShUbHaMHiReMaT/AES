@@ -1,0 +1,986 @@
+<title>Cycles Per Block</title>
+<style>
+  :root {
+    color-scheme: light;
+    --plane:      #f9f9f7;
+    --surface:    #fcfcfb;
+    --ink:        #0b0b0b;
+    --ink-2:      #52514e;
+    --muted:      #898781;
+    --grid:       #e1e0d9;
+    --axis:       #c3c2b7;
+    --border:     rgba(11, 11, 11, 0.10);
+    --rule:       rgba(11, 11, 11, 0.07);
+
+    /* the organizing idea: where the work happens */
+    --proc:       #eb6834;
+    --accel:      #2a78d6;
+
+    /* stage palette, validated slots 1-5 */
+    --s1: #2a78d6;
+    --s2: #eb6834;
+    --s3: #1baf7a;
+    --s4: #eda100;
+    --s5: #e87ba4;
+
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas,
+            "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --plane:   #0d0d0d;
+      --surface: #1a1a19;
+      --ink:     #ffffff;
+      --ink-2:   #c3c2b7;
+      --muted:   #898781;
+      --grid:    #2c2c2a;
+      --axis:    #383835;
+      --border:  rgba(255, 255, 255, 0.10);
+      --rule:    rgba(255, 255, 255, 0.08);
+      --proc:    #d95926;
+      --accel:   #3987e5;
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+      --s4: #c98500;
+      --s5: #d55181;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:   #0d0d0d;
+    --surface: #1a1a19;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --axis:    #383835;
+    --border:  rgba(255, 255, 255, 0.10);
+    --rule:    rgba(255, 255, 255, 0.08);
+    --proc:    #d95926;
+    --accel:   #3987e5;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--plane);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 14px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 4.2vw, 44px);
+    line-height: 1.12;
+    letter-spacing: -0.022em;
+    font-weight: 650;
+    text-wrap: balance;
+    max-width: 20ch;
+  }
+
+  .standfirst {
+    margin: 0;
+    max-width: 68ch;
+    font-size: 17px;
+    color: var(--ink-2);
+  }
+
+  /* ---------- section scaffolding ---------- */
+
+  section { display: flex; flex-direction: column; gap: 20px; }
+
+  .sec-head { display: flex; flex-direction: column; gap: 8px; }
+
+  .sec-head h2 {
+    margin: 0;
+    font-size: 23px;
+    letter-spacing: -0.012em;
+    font-weight: 620;
+    text-wrap: balance;
+  }
+
+  .sec-head p {
+    margin: 0;
+    max-width: 72ch;
+    color: var(--ink-2);
+    font-size: 15.5px;
+  }
+
+  /* the chip encodes where the work runs -- the page's one structural device */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 9px 3px 7px;
+    white-space: nowrap;
+  }
+  .chip::before {
+    content: "";
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--dot, var(--muted));
+  }
+  .chip.proc  { --dot: var(--proc); }
+  .chip.accel { --dot: var(--accel); }
+
+  /* ---------- figure card ---------- */
+
+  figure {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 26px 26px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .fig-head { display: flex; flex-direction: column; gap: 5px; }
+
+  .fig-title {
+    font-size: 16.5px;
+    font-weight: 620;
+    letter-spacing: -0.008em;
+  }
+
+  .fig-sub { font-size: 13.5px; color: var(--ink-2); }
+
+  /* the tooltip lives in .plotwrap, not .plot -- an overflow-x scroller also
+     clips vertically, which would cut the tooltip off above the plot */
+  .plotwrap { position: relative; }
+  .plot { overflow-x: auto; }
+  .plot svg { display: block; width: 100%; height: auto; min-width: 620px; }
+
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 88ch;
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+  }
+
+  /* ---------- svg text roles ---------- */
+
+  /* This ink is deliberately theme-invariant: it sits on a series fill, not on
+     the surface, and near-black clears 4.7:1 on every one of the ten slot
+     colours (5 slots x 2 themes). White would be 2.2:1 on the yellow. */
+  .t-inbar  { font: 600 15px var(--sans); fill: #0b0b0b; }
+  .t-stage  { font: 500 13px var(--sans); fill: var(--ink-2); }
+  .t-ops    { font: 400 12.5px var(--mono); fill: var(--muted); }
+  .t-tick   { font: 400 12px var(--mono); fill: var(--muted); }
+  .t-row    { font: 400 14px var(--sans); fill: var(--ink-2); }
+  .t-val    { font: 600 13.5px var(--mono); fill: var(--ink); }
+  .t-note   { font: 400 12.5px var(--sans); fill: var(--muted); }
+  .t-legend { font: 400 13px var(--sans); fill: var(--ink-2); }
+
+  .leader   { stroke: var(--axis); stroke-width: 1; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .axisline { stroke: var(--axis); stroke-width: 1; }
+
+  .hit { fill: transparent; cursor: default; }
+  .seg, .dot, .stem { transition: opacity .12s ease; }
+  .dimmed { opacity: .32; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seg, .dot, .stem { transition: none; }
+  }
+
+  /* ---------- tooltip ---------- */
+
+  .tip {
+    position: absolute;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -100%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .13);
+    padding: 9px 11px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .tip.on { opacity: 1; }
+  .tip b { font-family: var(--mono); font-weight: 600; }
+  .tip .tip-sub { color: var(--muted); font-size: 11.5px; }
+
+  /* ---------- key numbers ---------- */
+
+  .ledger {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .cell {
+    background: var(--surface);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .cell .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .cell .v {
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .cell .n { font-size: 12.5px; color: var(--ink-2); }
+
+  /* ---------- tables ---------- */
+
+  .tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 720px;
+    font-size: 13.5px;
+  }
+
+  caption {
+    text-align: left;
+    padding: 16px 18px 12px;
+    font-size: 13px;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  td.num, th.num {
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  td.name { font-weight: 550; color: var(--ink); }
+
+  tr.is-accel td.name { box-shadow: inset 2px 0 0 var(--accel); }
+  tr.is-proc  td.name { box-shadow: inset 2px 0 0 var(--proc); }
+
+  /* ---------- notes ---------- */
+
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 22px;
+  }
+
+  .note {
+    border-top: 2px solid var(--border);
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .note h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 620;
+    letter-spacing: -0.005em;
+  }
+
+  .note p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+
+  .note.flag { border-top-color: var(--proc); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    background: var(--plane);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.1em 0.35em;
+  }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 20px;
+    font-size: 12.5px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accel);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 36px 18px 64px; gap: 44px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">AES-128 on Artix-7 &middot; front-end comparison</div>
+    <h1>What changes when AES moves off the processor</h1>
+    <p class="standfirst">
+      The same 128-bit block, encrypted two ways: as 2,702 operations on a
+      general-purpose core, and as 10 cycles in a dedicated datapath. Accelerator
+      cycle counts are measured in RTL simulation; software cost is counted from
+      an instrumented implementation, not estimated.
+    </p>
+  </header>
+
+  <!-- ============================ FIGURE 1 ============================ -->
+  <section>
+    <div class="sec-head">
+      <span class="chip proc">Work runs on the processor</span>
+      <h2>Normally, the processor does all of it</h2>
+      <p>
+        A soft core running byte-wise AES-128 spends 2,702 operations on every
+        128-bit block. Here is where they go &mdash; and why one stage dominates.
+      </p>
+    </div>
+
+    <figure>
+      <div class="fig-head">
+        <div class="fig-title">Processor cycle budget for one 128-bit block</div>
+        <div class="fig-sub">
+          MicroBlaze-class 32-bit soft core at 100 MHz, IPC 1.0. Counted by
+          instrumenting a working AES-128 implementation.
+        </div>
+      </div>
+      <div class="plotwrap" id="wrap1">
+        <div class="plot" id="plot1">
+          <svg viewBox="0 0 1000 250" role="img"
+               aria-label="Stacked bar: MixColumns 1,184 operations (44%), AddRoundKey 538 (20%), KeyExpansion 420 (16%), SubBytes 320 (12%), ShiftRows 240 (9%), totalling 2,702 operations per 128-bit block."></svg>
+        </div>
+        <div class="tip" id="tip1"></div>
+      </div>
+      <figcaption>
+        MixColumns is 44% of the work. In software each GF(2&#8312;) doubling costs a
+        shift, a high-bit test and a conditional XOR &mdash; per byte, per round. In
+        hardware the same operation is a fixed tree of XOR gates that settles
+        within one cycle, which is most of where the speed-up comes from.
+      </figcaption>
+    </figure>
+
+    <div class="ledger">
+      <div class="cell">
+        <span class="k">Throughput ceiling</span>
+        <span class="v">4.74 Mbps</span>
+        <span class="n">with the core 100% occupied</span>
+      </div>
+      <div class="cell">
+        <span class="k">Latency per block</span>
+        <span class="v">27.0 &micro;s</span>
+        <span class="n">2,702 cycles at 100 MHz</span>
+      </div>
+      <div class="cell">
+        <span class="k">CPU left for anything else</span>
+        <span class="v">0%</span>
+        <span class="n">at the ceiling rate</span>
+      </div>
+      <div class="cell">
+        <span class="k">Cost of 10 Mbps</span>
+        <span class="v">211%</span>
+        <span class="n">of one core &mdash; not reachable</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ FIGURE 2 ============================ -->
+  <section>
+    <div class="sec-head">
+      <span class="chip accel">Work runs in the FPGA</span>
+      <h2>With the accelerator, the same block costs 10 cycles</h2>
+      <p>
+        Every configuration on one axis. The processor rows are what the CPU
+        does; the accelerator rows are what the hardware does while the CPU is
+        free. Note the third row &mdash; offloading does not make the CPU cost zero.
+      </p>
+    </div>
+
+    <figure>
+      <div class="fig-head">
+        <div class="fig-title">Cycles per 128-bit block, every configuration</div>
+        <div class="fig-sub">
+          Log scale. Accelerator counts asserted on 1,013+ blocks each in
+          simulation; throughput shown at the 384.6 MHz project target.
+        </div>
+      </div>
+      <div class="plotwrap" id="wrap2">
+        <div class="plot" id="plot2">
+          <svg viewBox="0 0 1100 480" role="img"
+               aria-label="Dot plot on a log axis of cycles per 128-bit block: soft core byte-wise 2,702; soft core T-table 1,004; CPU interface cost once offloaded 20; accelerator iterative 11; accelerator overlapped 10; accelerator pipelined 1."></svg>
+        </div>
+        <div class="tip" id="tip2"></div>
+      </div>
+      <figcaption>
+        The overlapped core is the one that meets the project's stated target:
+        128 bits every 10 cycles at 384.6 MHz is 4.92 Gbps, with latency still
+        11 cycles. The plain iterative core needs 11 cycles per block and so
+        reaches 4.48 Gbps at the same clock.
+      </figcaption>
+    </figure>
+
+    <div class="ledger">
+      <div class="cell">
+        <span class="k">Throughput, overlapped core</span>
+        <span class="v">4.92 Gbps</span>
+        <span class="n">1,039&times; the software ceiling</span>
+      </div>
+      <div class="cell">
+        <span class="k">Throughput, pipelined core</span>
+        <span class="v">49.2 Gbps</span>
+        <span class="n">one block every clock</span>
+      </div>
+      <div class="cell">
+        <span class="k">Latency per block</span>
+        <span class="v">28.6 ns</span>
+        <span class="n">11 cycles &mdash; 945&times; lower</span>
+      </div>
+      <div class="cell">
+        <span class="k">CPU now spends</span>
+        <span class="v">20 ops</span>
+        <span class="n">per block, or ~1 with DMA</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ TABLE ============================ -->
+  <section>
+    <div class="sec-head">
+      <h2>Every factor, side by side</h2>
+      <p>
+        The same data behind both charts. Speed-up is measured against the
+        byte-wise software baseline.
+      </p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption>
+          Software at 100 MHz (IPC 1.0); accelerator at the 384.6 MHz target.
+          Throughput is bits &divide; cycles &times; frequency.
+        </caption>
+        <thead>
+          <tr>
+            <th>Configuration</th>
+            <th>Runs on</th>
+            <th class="num">Cycles / block</th>
+            <th class="num">Latency / block</th>
+            <th class="num">Throughput</th>
+            <th class="num">Speed-up</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <caption>
+          Processor load required to sustain a given encrypted link rate. This
+          is the factor that decides whether an accelerator alone is enough.
+        </caption>
+        <thead>
+          <tr>
+            <th>Sustained rate</th>
+            <th class="num">Software only</th>
+            <th class="num">Accelerator, memory-mapped</th>
+            <th class="num">Accelerator + DMA</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">10 Mbps</td>
+            <td class="num">211%</td><td class="num">1.6%</td><td class="num">0.08%</td>
+          </tr>
+          <tr>
+            <td class="name">100 Mbps</td>
+            <td class="num">2,111%</td><td class="num">15.6%</td><td class="num">0.78%</td>
+          </tr>
+          <tr>
+            <td class="name">1 Gbps</td>
+            <td class="num">21,111%</td><td class="num">156%</td><td class="num">7.8%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================ NOTES ============================ -->
+  <section>
+    <div class="sec-head">
+      <h2>What is measured, what is not</h2>
+      <p>
+        Provenance matters more than the headline ratio. Nothing below is an
+        unsourced estimate, and the quantities that could not be measured on
+        this machine are named rather than guessed.
+      </p>
+    </div>
+
+    <div class="notes">
+      <div class="note">
+        <h3>Measured &mdash; accelerator cycles</h3>
+        <p>
+          11, 10 and 1 cycles per block come from Icarus simulations of the RTL,
+          asserted on every one of 1,013+ blocks per core, not sampled. The
+          testbenches also verify 1,013 NIST-derived ciphertexts per run.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Measured &mdash; software cost</h3>
+        <p>
+          2,702 and 1,004 operations per block are counted from an instrumented
+          AES that is asserted against the FIPS-197 vector, so a miscounted
+          implementation is also a wrong one.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Derived &mdash; throughput</h3>
+        <p>
+          Bits &divide; cycles &times; frequency. Exact arithmetic on the measured cycle
+          counts; no judgement involved beyond the frequency each side is
+          clocked at.
+        </p>
+      </div>
+      <div class="note flag">
+        <h3>Not verified &mdash; 384.6 MHz</h3>
+        <p>
+          Vivado is not installed on the machine these numbers were produced on,
+          so the accelerator clock is the project's target, not a synthesis
+          result. A full AES round between registers on a &minus;1 Artix-7 will
+          plausibly close nearer 150&ndash;250 MHz; scale the Gbps figures linearly if
+          it does.
+        </p>
+      </div>
+      <div class="note flag">
+        <h3>Not measured &mdash; area and power</h3>
+        <p>
+          LUT, flip-flop and power figures are absent rather than estimated. The
+          pipelined core instantiates 200 S-boxes and will not fit the project's
+          &lt;3% LUT budget; the iterative cores plausibly will.
+        </p>
+      </div>
+      <div class="note flag">
+        <h3>The interface becomes the bottleneck</h3>
+        <p>
+          At 1 Gbps a memory-mapped handshake costs more processor time than the
+          core has. Past roughly 100 Mbps the accelerator needs a DMA or stream
+          interface, or the offload gains are spent moving data.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      Software baseline: MicroBlaze-class 32-bit soft core, 100 MHz, IPC 1.0.
+      Context point &mdash; the same OpenSSL AES-128-ECB with AES-NI on the host
+      (AMD Ryzen 5 5600H) measured 14.97 Gbps, between the overlapped and
+      pipelined cores.
+    </div>
+    <div>
+      Regenerate: <code>python bench/collect_data.py</code> then
+      <code>python bench/make_figures.py</code>.
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const STAGES = [
+    { name: "MixColumns",   ops: 1184, slot: "--s1",
+      why: "GF(2\u2078) doubling: shift, test, conditional XOR per byte" },
+    { name: "AddRoundKey",  ops: 538,  slot: "--s2",
+      why: "16 loads, 16 XORs, 16 stores, eleven times" },
+    { name: "KeyExpansion", ops: 420,  slot: "--s3",
+      why: "RotWord, SubWord, Rcon and the 4-word chain, per round" },
+    { name: "SubBytes",     ops: 320,  slot: "--s4",
+      why: "16 S-box lookups per round" },
+    { name: "ShiftRows",    ops: 240,  slot: "--s5",
+      why: "12 of 16 bytes move; free in hardware as wiring" }
+  ];
+  const TOTAL = STAGES.reduce((a, s) => a + s.ops, 0);
+
+  const ROWS = [
+    { name: "Soft core, byte-wise AES", cycles: 2702, bps: 4.737231e6,
+      where: "proc", latency: "27.0 \u00b5s",
+      sub: "256-byte S-box, on-the-fly key schedule" },
+    { name: "Soft core, T-table AES", cycles: 1004, bps: 12.749004e6,
+      where: "proc", latency: "10.0 \u00b5s",
+      sub: "4 KB of tables, 32-bit datapath" },
+    { name: "CPU cost once offloaded", cycles: 20, bps: null,
+      where: "proc", latency: "\u2014",
+      sub: "memory-mapped handshake per block; ~1 with DMA" },
+    { name: "Accelerator \u2014 iterative", cycles: 11, bps: 4.475345e9,
+      where: "accel", latency: "28.6 ns",
+      sub: "one round datapath reused, II = 11" },
+    { name: "Accelerator \u2014 overlapped", cycles: 10, bps: 4.922880e9,
+      where: "accel", latency: "28.6 ns",
+      sub: "whitening overlaps round 10, II = 10" },
+    { name: "Accelerator \u2014 pipelined", cycles: 1, bps: 49.228800e9,
+      where: "accel", latency: "28.6 ns",
+      sub: "10 rounds unrolled, II = 1" }
+  ];
+
+  const BASE_BPS = ROWS[0].bps;
+  const SVGNS = "http://www.w3.org/2000/svg";
+
+  function el(tag, attrs, text) {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function fmtBps(b) {
+    if (b == null) return "\u2014";
+    return b >= 1e9 ? (b / 1e9).toFixed(2) + " Gbps"
+                    : (b / 1e6).toFixed(2) + " Mbps";
+  }
+
+  function tipFor(wrapId, tipId) {
+    const wrap = document.getElementById(wrapId);
+    const tip = document.getElementById(tipId);
+    return {
+      show(html, clientX, clientY) {
+        tip.innerHTML = html;
+        const r = wrap.getBoundingClientRect();
+        let x = clientX - r.left;
+        const pad = 8;
+        x = Math.max(tip.offsetWidth / 2 + pad,
+                     Math.min(x, r.width - tip.offsetWidth / 2 - pad));
+        tip.style.left = x + "px";
+        tip.style.top = (clientY - r.top - 12) + "px";
+        tip.classList.add("on");
+      },
+      hide() { tip.classList.remove("on"); }
+    };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Figure 1 -- stacked bar, labels above on staggered rows            *
+   * ------------------------------------------------------------------ */
+  function drawStages() {
+    const svg = document.querySelector("#plot1 svg");
+    const W = 1000, X0 = 0, PW = 1000;
+    const BAR_Y = 118, BAR_H = 46;
+    const ROW_A = 34, ROW_B = 82;
+    const AXIS_Y = 196;
+    const tip = tipFor("wrap1", "tip1");
+
+    const segs = [];
+    let x = X0;
+    STAGES.forEach((s, i) => {
+      const w = (s.ops / TOTAL) * PW;
+      const g = el("g");
+
+      // 2px surface gap between fills rather than a border around them
+      const rect = el("rect", {
+        x: x + (i === 0 ? 0 : 1), y: BAR_Y,
+        width: Math.max(w - (i === 0 || i === STAGES.length - 1 ? 1 : 2), 1),
+        height: BAR_H, fill: `var(${s.slot})`, class: "seg"
+      });
+      g.appendChild(rect);
+
+      const pct = (100 * s.ops / TOTAL);
+      g.appendChild(el("text", {
+        x: x + w / 2, y: BAR_Y + BAR_H / 2 + 5.5,
+        "text-anchor": "middle", class: "t-inbar"
+      }, Math.round(pct) + "%"));
+
+      const labelY = (i % 2 === 0) ? ROW_A : ROW_B;
+      g.appendChild(el("line", {
+        x1: x + w / 2, y1: labelY + 8, x2: x + w / 2, y2: BAR_Y - 4,
+        class: "leader"
+      }));
+      g.appendChild(el("text", {
+        x: x + w / 2, y: labelY - 12, "text-anchor": "middle", class: "t-stage"
+      }, s.name));
+      g.appendChild(el("text", {
+        x: x + w / 2, y: labelY + 4, "text-anchor": "middle", class: "t-ops"
+      }, s.ops.toLocaleString() + " ops"));
+
+      svg.appendChild(g);
+      segs.push({ rect, data: s, x: x, w: w });
+      x += w;
+    });
+
+    // axis beneath the bar
+    svg.appendChild(el("line", {
+      x1: X0, y1: AXIS_Y, x2: X0 + PW, y2: AXIS_Y, class: "axisline"
+    }));
+    [0, 500, 1000, 1500, 2000, 2500].forEach(t => {
+      const tx = X0 + (t / TOTAL) * PW;
+      svg.appendChild(el("line", {
+        x1: tx, y1: AXIS_Y, x2: tx, y2: AXIS_Y + 5, class: "axisline"
+      }));
+      svg.appendChild(el("text", {
+        x: tx, y: AXIS_Y + 20, "text-anchor": t === 0 ? "start" : "middle",
+        class: "t-tick"
+      }, t.toLocaleString()));
+    });
+    svg.appendChild(el("text", {
+      x: X0 + PW / 2, y: AXIS_Y + 44, "text-anchor": "middle", class: "t-note"
+    }, "processor operations (\u2248 cycles at IPC 1.0) for one 128-bit block"));
+
+    // hover: emphasise one segment, dim the rest
+    segs.forEach(s => {
+      const hit = el("rect", {
+        x: s.x, y: BAR_Y - 10, width: s.w, height: BAR_H + 20, class: "hit"
+      });
+      hit.addEventListener("mousemove", ev => {
+        segs.forEach(o => o.rect.classList.toggle("dimmed", o !== s));
+        tip.show(
+          `<b>${s.data.name}</b> \u00b7 ${s.data.ops.toLocaleString()} ops ` +
+          `(${(100 * s.data.ops / TOTAL).toFixed(1)}%)` +
+          `<div class="tip-sub">${s.data.why}</div>`,
+          ev.clientX, ev.clientY);
+      });
+      hit.addEventListener("mouseleave", () => {
+        segs.forEach(o => o.rect.classList.remove("dimmed"));
+        tip.hide();
+      });
+      svg.appendChild(hit);
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Figure 2 -- lollipop dot plot on a log axis                        *
+   * ------------------------------------------------------------------ */
+  function drawCycles() {
+    const svg = document.querySelector("#plot2 svg");
+    const LEFT = 246, PX0 = 268;
+    // PW leaves room to the right of the longest dot for its value label:
+    // the 2,702 dot lands at x ~= 835, its label runs ~200px, viewBox is 1100
+    const PW = 760;
+    const TOP = 40, STEP = 58;
+    const DOM_MAX = 40000;
+    const AXIS_Y = TOP + ROWS.length * STEP - 8;
+    const tip = tipFor("wrap2", "tip2");
+
+    const sx = v => PX0 + (Math.log10(v) / Math.log10(DOM_MAX)) * PW;
+
+    // gridlines first, so marks sit above them
+    [1, 10, 100, 1000, 10000].forEach(t => {
+      svg.appendChild(el("line", {
+        x1: sx(t), y1: TOP - 24, x2: sx(t), y2: AXIS_Y, class: "gridline"
+      }));
+    });
+
+    const marks = [];
+    ROWS.forEach((r, i) => {
+      const y = TOP + i * STEP;
+      const color = r.where === "accel" ? "var(--accel)" : "var(--proc)";
+      const dx = sx(r.cycles);
+
+      svg.appendChild(el("text", {
+        x: LEFT, y: y + 5, "text-anchor": "end", class: "t-row"
+      }, r.name));
+
+      const stem = el("line", {
+        x1: PX0, y1: y, x2: dx, y2: y, stroke: color,
+        "stroke-width": 2, "stroke-linecap": "round",
+        opacity: "0.34", class: "stem"
+      });
+      svg.appendChild(stem);
+
+      const dot = el("circle", {
+        cx: dx, cy: y, r: 7.5, fill: color,
+        stroke: "var(--surface)", "stroke-width": 2, class: "dot"
+      });
+      svg.appendChild(dot);
+
+      const label = r.cycles === 1 ? "1 cycle"
+                                   : r.cycles.toLocaleString() + " cycles";
+      svg.appendChild(el("text", {
+        x: dx + 15, y: y - 3, class: "t-val"
+      }, label + (r.bps ? "  \u00b7  " + fmtBps(r.bps) : "")));
+      svg.appendChild(el("text", {
+        x: dx + 15, y: y + 14, class: "t-note"
+      }, r.sub));
+
+      marks.push({ dot, stem, data: r, y });
+    });
+
+    // axis
+    svg.appendChild(el("line", {
+      x1: PX0, y1: AXIS_Y, x2: PX0 + PW, y2: AXIS_Y, class: "axisline"
+    }));
+    [1, 10, 100, 1000, 10000].forEach(t => {
+      svg.appendChild(el("text", {
+        x: sx(t), y: AXIS_Y + 20, "text-anchor": "middle", class: "t-tick"
+      }, t.toLocaleString()));
+    });
+    svg.appendChild(el("text", {
+      x: PX0 + PW / 2, y: AXIS_Y + 44, "text-anchor": "middle", class: "t-note"
+    }, "clock cycles per 128-bit block (log scale)"));
+
+    // Legend sits on its own row below the axis caption -- placing it beside
+    // the axis would put it on top of the "1" tick label.
+    const lg = el("g");
+    [["var(--proc)", "runs on the processor", 0],
+     ["var(--accel)", "runs in the FPGA accelerator", 200]].forEach(p => {
+      const ly = AXIS_Y + 72;
+      lg.appendChild(el("circle", {
+        cx: PX0 + 6 + p[2], cy: ly - 4, r: 6, fill: p[0],
+        stroke: "var(--surface)", "stroke-width": 1.5
+      }));
+      lg.appendChild(el("text", {
+        x: PX0 + 18 + p[2], y: ly, class: "t-legend"
+      }, p[1]));
+    });
+    svg.appendChild(lg);
+
+    marks.forEach(m => {
+      const hit = el("rect", {
+        x: PX0 - 12, y: m.y - STEP / 2, width: PW + 12, height: STEP,
+        class: "hit"
+      });
+      hit.addEventListener("mousemove", ev => {
+        marks.forEach(o => {
+          o.dot.classList.toggle("dimmed", o !== m);
+          o.stem.classList.toggle("dimmed", o !== m);
+        });
+        const r = m.data;
+        const speed = r.bps ? (r.bps / BASE_BPS) : null;
+        tip.show(
+          `<b>${r.name}</b>` +
+          `<div class="tip-sub">${r.cycles.toLocaleString()} cycles/block \u00b7 ` +
+          `${fmtBps(r.bps)} \u00b7 latency ${r.latency}` +
+          (speed ? ` \u00b7 ${speed >= 10 ? Math.round(speed).toLocaleString()
+                                     : speed.toFixed(1)}\u00d7 baseline` : "") +
+          `</div>`,
+          ev.clientX, ev.clientY);
+      });
+      hit.addEventListener("mouseleave", () => {
+        marks.forEach(o => {
+          o.dot.classList.remove("dimmed");
+          o.stem.classList.remove("dimmed");
+        });
+        tip.hide();
+      });
+      svg.appendChild(hit);
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Table twin -- same data, reachable without hovering anything       *
+   * ------------------------------------------------------------------ */
+  function drawTable() {
+    const tb = document.getElementById("tbody");
+    ROWS.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.className = r.where === "accel" ? "is-accel" : "is-proc";
+      const speed = r.bps ? r.bps / BASE_BPS : null;
+      const cells = [
+        ["name", r.name],
+        ["", r.where === "accel" ? "FPGA accelerator" : "Processor"],
+        ["num", r.cycles.toLocaleString()],
+        ["num", r.latency],
+        ["num", fmtBps(r.bps)],
+        ["num", speed == null ? "\u2014"
+              : (speed >= 10 ? Math.round(speed).toLocaleString() + "\u00d7"
+                             : speed.toFixed(1) + "\u00d7")]
+      ];
+      cells.forEach(([cls, val]) => {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  }
+
+  drawStages();
+  drawCycles();
+  drawTable();
+})();
+</script>

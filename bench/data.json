@@ -1,0 +1,111 @@
+{
+  "assumptions": {
+    "softcore_name": "MicroBlaze-class 32-bit soft core",
+    "softcore_mhz": 100.0,
+    "softcore_ipc": 1.0,
+    "softcore_ipc_pessimistic": 0.7,
+    "accel_clock_mhz": 384.6,
+    "accel_iface_ops_per_block": 20,
+    "accel_iface_ops_per_block_dma": 1,
+    "_notes": {
+      "softcore_mhz": "100 MHz is the usual MicroBlaze target on an Artix-7 -1 part.",
+      "softcore_ipc": "Single-issue in-order core, instruction and data in local BRAM, so ~1 operation per cycle. 0.7 is carried as a pessimistic bound covering pipeline and load-use stalls.",
+      "accel_clock_mhz": "The project's target frequency. NOT verified by synthesis -- Vivado is not installed here. Charts plot throughput against frequency so this single number is not load-bearing.",
+      "accel_iface_ops_per_block": "Memory-mapped interface: 8 x 32-bit writes (key + plaintext), 4 x 32-bit reads (ciphertext), plus loop and status-poll overhead. With a DMA engine feeding the core this amortises to roughly 1 op per block, carried as the second figure."
+    }
+  },
+  "host": {
+    "platform": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "machine": "AMD64",
+    "name": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "max_clock_mhz": 3301.0
+  },
+  "provenance": {
+    "software_ops": "measured (instrumented AES, validated vs FIPS-197)",
+    "rtl_cycles": "measured (Icarus simulation, re-verified)",
+    "aesni_bps": "measured (OpenSSL wall clock, best of 7)",
+    "throughput": "derived (bits / cycles x frequency)",
+    "cpu_utilisation": "derived from measured cycles + stated assumptions"
+  },
+  "software_ops": {
+    "bytewise": {
+      "load": 386,
+      "store": 760,
+      "xor": 954,
+      "shift": 144,
+      "mask": 144,
+      "branch": 154,
+      "mov": 160,
+      "total": 2702
+    },
+    "bytewise_stages": {
+      "AddRoundKey": 538,
+      "KeyExpansion": 420,
+      "SubBytes": 320,
+      "ShiftRows": 240,
+      "MixColumns": 1184
+    },
+    "ttable": {
+      "load": 214,
+      "store": 84,
+      "xor": 244,
+      "shift": 252,
+      "mask": 200,
+      "branch": 10,
+      "mov": 0,
+      "total": 1004
+    }
+  },
+  "software": {
+    "bytewise": {
+      "ops_per_block": 2702,
+      "cycles_per_block": 2702.0,
+      "cycles_per_block_pessimistic": 3860.0000000000005,
+      "bps": 4737231.680236861,
+      "bps_pessimistic": 3316062.176165803,
+      "label": "Soft core, byte-wise"
+    },
+    "ttable": {
+      "ops_per_block": 1004,
+      "cycles_per_block": 1004.0,
+      "cycles_per_block_pessimistic": 1434.2857142857144,
+      "bps": 12749003.984063745,
+      "bps_pessimistic": 8924302.78884462,
+      "label": "Soft core, T-table"
+    }
+  },
+  "hardware": {
+    "aes128_iterative": {
+      "label": "Iterative (II=11)",
+      "cycles_per_block": 11,
+      "latency_cycles": 11,
+      "source": "tb_aes128_iterative.v -- asserted on all 1020 blocks",
+      "bps_at_target": 4475345454.545455,
+      "latency_ns_at_target": 28.60114404576183
+    },
+    "aes128_iterative_ii10": {
+      "label": "Overlapped (II=10)",
+      "cycles_per_block": 10,
+      "latency_cycles": 11,
+      "source": "tb_aes128_iterative_ii10.v -- asserted on all 1013 blocks",
+      "bps_at_target": 4922880000.0,
+      "latency_ns_at_target": 28.60114404576183
+    },
+    "aes128_pipelined": {
+      "label": "Pipelined (II=1)",
+      "cycles_per_block": 1,
+      "latency_cycles": 11,
+      "source": "tb_aes128_pipelined.v -- asserted on all 1013 blocks",
+      "bps_at_target": 49228800000.0,
+      "latency_ns_at_target": 28.60114404576183
+    }
+  },
+  "aesni_bps": 15209322460.470818,
+  "stages": {
+    "AddRoundKey": 538,
+    "KeyExpansion": 420,
+    "SubBytes": 320,
+    "ShiftRows": 240,
+    "MixColumns": 1184
+  }
+}
