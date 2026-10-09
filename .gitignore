@@ -1,0 +1,11 @@
+# Vivado simulator scratch (sim\run_xsim.bat runs from the repo root)
+xsim.dir/
+*.wdb
+*.pb
+*.jou
+*.log
+*.vcd
+.Xil/
+
+# Python
+__pycache__/

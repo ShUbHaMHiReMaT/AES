@@ -129,13 +129,44 @@
         <div class="card-head"><h2>Result</h2><span class="sub" id="encMeta"></span></div>
         <div id="encTable"></div>
         <div class="field">
-          <label>Ciphertext</label>
+          <label>Ciphertext <span class="muted">(the scrambled message)</span></label>
           <div class="mono out" id="encCt"></div>
+          <div class="row">
+            <button class="btn" id="encCopyCt">Copy ciphertext</button>
+            <button class="btn" id="encCopyKey">Copy key</button>
+            <button class="btn primary" id="encToDec">Send to Decrypt ↓</button>
+          </div>
         </div>
         <div class="field">
           <label>Decrypted in the browser</label>
           <div class="mono out" id="encBack"></div>
         </div>
+      </div>
+
+      <div class="card" id="decCard">
+        <div class="card-head"><h2>Decrypt</h2><span class="sub">ciphertext + the same key → the original message</span></div>
+        <div class="field">
+          <label for="decCt">Ciphertext (hex)</label>
+          <textarea id="decCt" rows="2" spellcheck="false" placeholder="paste the scrambled message here, e.g. 3925841d02dc09fbdc118597196a0b32"></textarea>
+        </div>
+        <div class="field">
+          <label for="decKey">Key (128-bit hex)</label>
+          <input id="decKey" class="mono" spellcheck="false" placeholder="the same 32-hex-digit key used to encrypt">
+        </div>
+        <div class="row">
+          <button class="btn primary" id="decGo">Decrypt</button>
+          <span class="hint" id="decHint"></span>
+        </div>
+        <div class="field">
+          <label>Original message</label>
+          <div class="out" id="decText"></div>
+        </div>
+        <div class="field">
+          <label>As hex</label>
+          <div class="mono out" id="decHex"></div>
+        </div>
+        <p class="muted">Decryption runs in the browser: the FPGA in this project is encrypt-only (hardware
+          decryption is future work). Try a wrong key: you get garbage, which is the whole point.</p>
       </div>
     </section>
 

@@ -416,8 +416,53 @@ function showEncResult(rows, core, dt, ct, key, text) {
   const back = new Uint8Array(rows.length * 16);
   rows.forEach((r, i) => back.set(A.decryptBlock(rk, r.ct), 16 * i));
   $("#encBack").textContent = text ? new TextDecoder().decode(A.unpad(back)) : A.toHex(back);
+  state.lastEnc = { ct, key: A.toHex(key) };
   renderScorecard();
 }
+
+// ---------------------------------------------------------------------------
+// decrypt (in the browser: the FPGA cores are encrypt-only)
+// ---------------------------------------------------------------------------
+async function copy(text, what) {
+  try { await navigator.clipboard.writeText(text); toast(`${what} copied`); }
+  catch { toast(`Could not copy -- select the ${what.toLowerCase()} and press Ctrl+C`, true); }
+}
+$("#encCopyCt").addEventListener("click", () => state.lastEnc && copy(state.lastEnc.ct, "Ciphertext"));
+$("#encCopyKey").addEventListener("click", () => state.lastEnc && copy(state.lastEnc.key, "Key"));
+$("#encToDec").addEventListener("click", () => {
+  if (!state.lastEnc) return;
+  $("#decCt").value = state.lastEnc.ct;
+  $("#decKey").value = state.lastEnc.key;
+  $("#decCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  decrypt();
+});
+
+function decrypt() {
+  const hint = $("#decHint");
+  const ctHex = $("#decCt").value.replace(/[^0-9a-f]/gi, "");
+  const keyHex = $("#decKey").value.trim();
+  $("#decText").textContent = "";
+  $("#decHex").textContent = "";
+  hint.className = "hint warn";
+  if (!A.isHex32(keyHex)) { hint.textContent = "The key must be exactly 32 hex digits."; return; }
+  if (!ctHex.length || ctHex.length % 32) { hint.textContent = "Ciphertext must be whole 16-byte blocks (a multiple of 32 hex digits)."; return; }
+  const rk = A.expandKey(A.fromHex(keyHex));
+  const ct = A.fromHex(ctHex);
+  const out = new Uint8Array(ct.length);
+  for (let i = 0; i < ct.length; i += 16) out.set(A.decryptBlock(rk, ct.subarray(i, i + 16)), i);
+  const unpadded = A.unpad(out);
+  const padOk = unpadded.length < out.length;
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(padOk ? unpadded : out);
+  // mostly printable characters and valid padding: almost certainly the right key
+  const printable = text.length && [...text].filter((c) => c >= " " && c !== "�").length / text.length > 0.9;
+  $("#decText").textContent = text;
+  $("#decHex").textContent = A.toHex(out);
+  if (padOk && printable) { hint.className = "hint"; hint.textContent = `${ct.length / 16} block(s) decrypted -- readable text, so the key is right`; }
+  else if (ct.length === 16 && !padOk) { hint.className = "hint"; hint.textContent = "1 block decrypted (a raw hex block has no padding -- compare the hex)"; }
+  else hint.textContent = "Decrypted, but it looks like garbage: wrong key, or the ciphertext was changed.";
+}
+$("#decGo").addEventListener("click", decrypt);
+$("#decCt").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); decrypt(); } });
 
 $("#encAll").addEventListener("click", () => requireBoard() && job($("#encAll"), async () => {
   const key = encKey();
@@ -436,6 +481,7 @@ $("#encAll").addEventListener("click", () => requireBoard() && job($("#encAll"),
   }</tbody></table></div>`;
   const ct = out[0].rows.map((r) => A.toHex(r.ct)).join("");
   $("#encCt").textContent = ct;
+  state.lastEnc = { ct, key: A.toHex(key) };
   const rk = A.expandKey(key);
   const back = new Uint8Array(blocks.length * 16);
   out[0].rows.forEach((r, i) => back.set(A.decryptBlock(rk, r.ct), 16 * i));

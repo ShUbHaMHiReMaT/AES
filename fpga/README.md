@@ -27,25 +27,120 @@ How the figures were obtained:
 - **Power and environment:** Vivado estimates 0.6 W for the whole design. The
   die runs at about 37 °C, with VCCINT at 1.009 V (live from the XADC).
 
-## Use it
+## Run commands
 
-1. Plug the USB cable into **PROG/UART** and switch the board on.
-2. Load the design:
-   `vivado -mode batch -source fpga/scripts/program.tcl`. You can also use
-   Vivado Hardware Manager → Program Device → `fpga/build/aes_nexys_a7.bit`.
-   The display should then read `AES PASS`.
-3. Double-click **`fpga/web/START_CONSOLE.bat`**, then click **Connect board**
-   and pick the USB Serial Port (COM9).
+Run everything in **PowerShell**, from the repository folder. Vivado is not
+on the PATH by default, so start every new terminal with these two lines:
 
-Only one program can use the COM port at a time. Close other console tabs,
-serial terminals and `aes_board_test.py` before connecting.
+```powershell
+cd C:\Users\shrey\AES-128\AES
+$env:Path = "C:\Users\shrey\OneDrive\Desktop\Vivado\2023.1\bin;" + $env:Path
+```
 
-The console has these sections:
+Before you start, plug the USB cable into **PROG/UART** and switch the board on.
+
+### 1. Load the AES design onto the board (about 10 s)
+
+```powershell
+vivado -mode batch -source fpga/scripts/program.tcl
+```
+
+The output should end with `PROGRAMMED ... (DONE pin high)`, and the display
+reads `AES PASS`. Loading is temporary: switch the board off and on and you
+must load it again.
+
+### 2. Check the hardware (about 30 s)
+
+```powershell
+python fpga/host/aes_board_test.py --port COM9 -n 1000
+```
+
+The output should end with `RESULT: ALL CORES CORRECT ON HARDWARE`.
+
+### 3. Open the web console
+
+Double-click **`fpga\web\START_CONSOLE.bat`**. Or, from the terminal:
+
+```powershell
+python -m http.server 8000 --bind 127.0.0.1 --directory fpga/web
+```
+
+Then open **http://localhost:8000** in Chrome or Edge. Click **Connect board**
+and pick **USB Serial Port (COM9)**. Keep the terminal, or the black window,
+open while you use the page; closing it stops the page.
+
+Only one program can use COM9 at a time. Close the test script, other console
+tabs and serial terminals before connecting.
+
+### 4. Encrypt and decrypt (in the console)
+
+1. Go to **Encrypt** and type a message.
+2. Click **Random** next to Key to get a secret key.
+3. Click **Encrypt on FPGA**. The **Ciphertext** box shows the scrambled message.
+4. Click **Send to Decrypt ↓**. The **Decrypt** panel shows the original message again.
+5. Change one character of the key and click **Decrypt**: you get garbage.
+
+The FPGA only encrypts. Decryption runs in the browser.
+
+### 5. Rebuild the bitstream (about 15 min, only after changing Verilog)
+
+```powershell
+vivado -mode batch -source fpga/scripts/build.tcl
+```
+
+This regenerates the Vivado project, builds `fpga/build/aes_nexys_a7.bit`, and
+writes the numbers the console's Implementation page shows. It stops with an
+error if timing is not met. Then go back to step 1 to load the new bitstream.
+
+To look at the design in the Vivado GUI:
+
+```powershell
+vivado fpga/vivado/aes_nexys_a7.xpr
+```
+
+### 6. Simulate (no board needed)
+
+These check the three cores on their own, about 2 minutes:
+
+```powershell
+cmd /c sim\run_xsim.bat
+```
+
+These check the whole board design, driven through its pins, about 1 minute:
+
+```powershell
+mkdir $env:TEMP\aes_sim -Force | Out-Null; mkdir $env:TEMP\aes_sim\tb\vectors -Force | Out-Null
+copy tb\vectors\aes128_vectors.txt $env:TEMP\aes_sim\tb\vectors\
+$src = @((Resolve-Path fpga\tb\tb_nexys_a7_top.v).Path) + (Get-ChildItem rtl\*.v, fpga\rtl\*.v).FullName
+pushd $env:TEMP\aes_sim
+xvlog --nolog -sv $src
+xelab --nolog -top tb_nexys_a7_top -snapshot top
+xsim --nolog top -runall
+popd
+```
+
+Both should end with `ALL TESTS PASSED`.
+
+### 7. Demo bitstreams
+
+```powershell
+vivado -mode batch -source fpga/smoke/build_smoke.tcl                                  # LED walk + UART echo
+vivado -mode batch -source fpga/scripts/program.tcl -tclargs fpga/build/smoke.bit
+python fpga/host/uart_echo_test.py --port COM9
+
+vivado -mode batch -source fpga/demo7seg/build_seg7.tcl                                # type text -> 7-segment
+vivado -mode batch -source fpga/scripts/program.tcl -tclargs fpga/build/seg7_text.bit
+# then double-click fpga\web\START_DEMO.bat
+```
+
+Load `aes_nexys_a7.bit` again (step 1) to get the full AES design back.
+
+## The console
 
 | Section | What it does |
 |---|---|
 | Overview | Live board mirror, plus the proposal's objectives checked against the board |
-| Encrypt | Text or hex on any core, or all three; each block checked and decrypted back |
+| Encrypt | Text or hex on any core, or all three; each block checked. **Decrypt** panel: ciphertext + key gives the original message |
 | Inside AES | Round-by-round state matrices and key schedule, checked on the FPGA |
 | Benchmark | Hardware-counted Gbps per core with WebCrypto-verified checksums, and a constant-time check |
 | Image Lab | An image encrypted by the FPGA in ECB (structure leaks) and CTR (it doesn't) |
@@ -59,20 +154,6 @@ The console has these sections:
 - **BTNU** encrypts a random block and scrolls the ciphertext on the display.
 - **BTND** runs a 1 M-block benchmark and shows the Gbps figure.
 - **BTNC** re-runs the self-test.
-
-## Rebuild, simulate, test
-
-```powershell
-vivado -mode batch -source fpga/scripts/build.tcl      # project + bitstream + web/build_info.json
-vivado -mode batch -source fpga/scripts/program.tcl    # JTAG, volatile
-python fpga/host/aes_board_test.py --port COM9 -n 1000 # hardware regression
-```
-
-`build.tcl` regenerates `fpga/vivado/aes_nexys_a7.xpr`, so you can open that
-file in the Vivado GUI. In the GUI, **Run Simulation** runs
-`tb/tb_nexys_a7_top.v`. That testbench drives the whole design through its pins
-and checks every command, benchmark cycle counts and checksums, 40 queued
-requests, resynchronisation, buttons and reset.
 
 ## Protocol (1 Mbaud, 8N1)
 
