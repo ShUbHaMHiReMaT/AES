@@ -167,36 +167,39 @@ const mirror = (() => {
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "Live view of the Nexys A7 board");
   svg.innerHTML = `
-    <rect x="1" y="1" width="${W-2}" height="${H-2}" rx="16" fill="#0b1210" stroke="rgba(148,163,184,.18)"/>
-    <text x="22" y="32" fill="#6f7b8e" font-size="13" font-family="var(--mono)">NEXYS A7-100T</text>
-    <text x="22" y="50" fill="#3d4757" font-size="11" font-family="var(--mono)">XC7A100T · 100 MHz</text>
-    <rect x="110" y="60" width="380" height="88" rx="8" fill="#0a0505" stroke="#2a1212"/>
+    <rect x="14" y="14" width="${W-24}" height="${H-24}" rx="14" fill="#111"/>
+    <rect x="6" y="6" width="${W-24}" height="${H-24}" rx="14" fill="#fff3c4" stroke="#111" stroke-width="4"/>
+    <rect x="22" y="20" width="132" height="26" rx="6" fill="#ff6b9d" stroke="#111" stroke-width="2.5"/>
+    <text x="88" y="38" text-anchor="middle" fill="#111" font-size="12.5" font-weight="700" font-family="var(--mono)">NEXYS A7-100T</text>
+    <text x="166" y="38" fill="#111" font-size="10.5" font-weight="700" font-family="var(--mono)">XC7A100T · 100 MHz</text>
+    <rect x="114" y="64" width="380" height="88" rx="8" fill="#111"/>
+    <rect x="110" y="60" width="380" height="88" rx="8" fill="#0a0505" stroke="#111" stroke-width="3.5"/>
     <g id="mSeg" transform="translate(120,68) scale(0.69)"></g>
-    <text x="300" y="168" text-anchor="middle" fill="#3d4757" font-size="10" font-family="var(--mono)">7-SEGMENT</text>
-    <circle id="mRgb17" cx="520" cy="82" r="9" fill="#1b2230"/><text x="520" y="106" text-anchor="middle" fill="#3d4757" font-size="9" font-family="var(--mono)">LD17</text>
-    <circle id="mRgb16" cx="550" cy="82" r="9" fill="#1b2230"/><text x="550" y="106" text-anchor="middle" fill="#3d4757" font-size="9" font-family="var(--mono)">LD16</text>
+    <text x="300" y="170" text-anchor="middle" fill="#111" font-size="10" font-weight="700" font-family="var(--mono)">7-SEGMENT</text>
+    <circle id="mRgb17" cx="520" cy="82" r="10" fill="#e5e1d6" stroke="#111" stroke-width="2.5"/><text x="520" y="108" text-anchor="middle" fill="#111" font-size="9" font-weight="700" font-family="var(--mono)">LD17</text>
+    <circle id="mRgb16" cx="552" cy="82" r="10" fill="#e5e1d6" stroke="#111" stroke-width="2.5"/><text x="552" y="108" text-anchor="middle" fill="#111" font-size="9" font-weight="700" font-family="var(--mono)">LD16</text>
     <g id="mLeds"></g><g id="mSw"></g><g id="mBtn"></g>
-    <text x="22" y="206" fill="#3d4757" font-size="10" font-family="var(--mono)">LD15</text>
-    <text x="22" y="276" fill="#3d4757" font-size="10" font-family="var(--mono)">SW15</text>`;
+    <text x="22" y="206" fill="#111" font-size="10" font-weight="700" font-family="var(--mono)">LD15</text>
+    <text x="22" y="276" fill="#111" font-size="10" font-weight="700" font-family="var(--mono)">SW15</text>`;
   $("#boardMirror").appendChild(svg);
   const seg = new SegDisplay($("#mSeg", svg));
   const leds = [], sws = [], btns = {};
   for (let i = 0; i < 16; i++) {
     const x = 70 + (15 - i) * 26;            // LD15 on the left, as on the board
     const r = document.createElementNS(NS, "rect");
-    Object.entries({ x, y: 196, width: 12, height: 8, rx: 2, fill: "#13261b" }).forEach(([k, v]) => r.setAttribute(k, v));
+    Object.entries({ x, y: 194, width: 14, height: 10, rx: 2, fill: "#e9f5df", stroke: "#111", "stroke-width": 2 }).forEach(([k, v]) => r.setAttribute(k, v));
     $("#mLeds", svg).appendChild(r); leds[i] = r;
     const g = document.createElementNS(NS, "g");
-    g.innerHTML = `<rect x="${x}" y="244" width="12" height="26" rx="3" fill="#1b2230" stroke="rgba(148,163,184,.25)"/><rect class="k" x="${x+2}" y="258" width="8" height="10" rx="2" fill="#a9b4c4"/>`;
+    g.innerHTML = `<rect x="${x}" y="244" width="14" height="28" rx="3" fill="#ffffff" stroke="#111" stroke-width="2"/><rect class="k" x="${x+3}" y="258" width="8" height="11" rx="2" fill="#111"/>`;
     $("#mSw", svg).appendChild(g); sws[i] = $(".k", g);
   }
   const pos = { U: [560, 190], L: [526, 222], C: [560, 222], R: [594, 222], D: [560, 254] };
   for (const [k, [x, y]] of Object.entries(pos)) {
     const g = document.createElementNS(NS, "g");
-    g.innerHTML = `<circle cx="${x}" cy="${y}" r="12" fill="#1b2230" stroke="rgba(148,163,184,.3)"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" fill="#6f7b8e" font-family="var(--mono)">${k}</text>`;
-    $("#mBtn", svg).appendChild(g); btns[k] = $("circle", g);
+    g.innerHTML = `<circle cx="${x + 2}" cy="${y + 2}" r="13" fill="#111"/><circle cx="${x}" cy="${y}" r="13" fill="#ffffff" stroke="#111" stroke-width="2.5"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#111" font-family="var(--mono)">${k}</text>`;
+    $("#mBtn", svg).appendChild(g); btns[k] = $$("circle", g)[1];
   }
-  const RGB = ["#1b2230", "#3b82f6", "#22c55e", "#22d3ee", "#ef4444", "#d946ef", "#facc15", "#f8fafc"]; // index = {r,g,b}
+  const RGB = ["#e5e1d6", "#3b82f6", "#22c55e", "#22d3ee", "#ef4444", "#d946ef", "#facc15", "#ffffff"]; // index = {r,g,b}
   return {
     update(st) {
       const s = st.selftest;
@@ -205,12 +208,12 @@ const mirror = (() => {
       else pattern = (s.pass) | (s.fail << 3) | ((s.ran ? 1 : 0) << 6) | ((st.frames & 0x7f) << 7) | (1 << 14) | ((st.uptime & 1) << 15);
       leds.forEach((r, i) => {
         const on = (pattern >> i) & 1;
-        r.setAttribute("fill", on ? "#4ade80" : "#13261b");
-        r.style.filter = on ? "drop-shadow(0 0 4px #4ade80)" : "";
+        r.setAttribute("fill", on ? "#39e75f" : "#e9f5df");
+        r.style.filter = on ? "drop-shadow(0 0 4px #39e75f)" : "";
       });
-      sws.forEach((k, i) => k.setAttribute("y", (st.switches >> i) & 1 ? 246 : 258));
-      sws.forEach((k, i) => k.setAttribute("fill", (st.switches >> i) & 1 ? "#4cc9f0" : "#a9b4c4"));
-      for (const k of Object.keys(btns)) btns[k].setAttribute("fill", st.buttons[k] ? "#4cc9f0" : "#1b2230");
+      sws.forEach((k, i) => k.setAttribute("y", (st.switches >> i) & 1 ? 247 : 258));
+      sws.forEach((k, i) => k.setAttribute("fill", (st.switches >> i) & 1 ? "#3dd6f5" : "#111"));
+      for (const k of Object.keys(btns)) btns[k].setAttribute("fill", st.buttons[k] ? "#ff6b9d" : "#ffffff");
       const allPass = s.ran && s.pass === 7;
       const c16 = st.ledManual ? state.leds.rgb16 : (!s.ran ? 0 : allPass ? 2 : 4);
       const c17 = st.ledManual ? state.leds.rgb17 : 0;
@@ -608,19 +611,20 @@ function drawBars(el, rows) {
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Throughput comparison">`;
   for (let e = -3; e <= 2; e++) {
     const gx = x(10 ** e);
-    s += `<line x1="${gx}" y1="${top - 8}" x2="${gx}" y2="${H - 24}" stroke="rgba(148,163,184,.12)"/>`;
-    s += `<text x="${gx}" y="${H - 8}" fill="#6f7b8e" font-size="11" text-anchor="middle">${e < 0 ? `${10 ** (e + 3)} Mb` : `${10 ** e} Gb`}</text>`;
+    s += `<line x1="${gx}" y1="${top - 8}" x2="${gx}" y2="${H - 24}" stroke="#111" stroke-opacity=".15" stroke-width="1.5"/>`;
+    s += `<text x="${gx}" y="${H - 8}" fill="#111" font-size="11" text-anchor="middle">${e < 0 ? `${10 ** (e + 3)} Mb` : `${10 ** e} Gb`}</text>`;
   }
-  for (const [g, lab] of [[1, "1 Gbps goal"], [4.92, "4.92 paper"]]) {
-    s += `<line x1="${x(g)}" y1="${top - 14}" x2="${x(g)}" y2="${H - 24}" stroke="#fbbf24" stroke-dasharray="4 4" stroke-opacity=".6"/>`;
-    s += `<text x="${x(g) + 4}" y="${top - 16}" fill="#fbbf24" font-size="10.5">${lab}</text>`;
+  // the two reference lines sit close together: label one to the left, one to the right
+  for (const [g, lab, anchor, dx] of [[1, "1 Gbps goal", "end", -5], [4.92, "4.92 paper", "start", 5]]) {
+    s += `<line x1="${x(g)}" y1="${top - 14}" x2="${x(g)}" y2="${H - 24}" stroke="#d62839" stroke-width="2" stroke-dasharray="6 4"/>`;
+    s += `<text x="${x(g) + dx}" y="${top - 16}" fill="#d62839" font-size="11" font-weight="800" text-anchor="${anchor}">${lab}</text>`;
   }
   rows.forEach((r, i) => {
     const y = top + i * rowH;
-    s += `<text x="${left - 12}" y="${y + 17}" fill="#a9b4c4" font-size="12.5" text-anchor="end">${esc(r.label)}</text>`;
-    if (r.fmaxG) s += `<rect x="${left}" y="${y + 5}" width="${Math.max(2, x(r.fmaxG) - left)}" height="16" rx="3" fill="${r.color}" fill-opacity=".18"/>`;
-    s += `<rect x="${left}" y="${y + 5}" width="${Math.max(2, x(r.gbps) - left)}" height="16" rx="3" fill="${r.color}"/>`;
-    s += `<text x="${x(r.fmaxG ? Math.max(r.gbps, r.fmaxG) : r.gbps) + 8}" y="${y + 17}" fill="#e6edf6" font-size="12" font-family="var(--mono)">${fmtGbps(r.gbps)}${r.fmaxG ? ` <tspan fill="#6f7b8e">→ ${fmtGbps(r.fmaxG)}</tspan>` : ""}</text>`;
+    s += `<text x="${left - 12}" y="${y + 17}" fill="#111" font-size="12.5" font-weight="700" text-anchor="end">${esc(r.label)}</text>`;
+    if (r.fmaxG) s += `<rect x="${left}" y="${y + 4}" width="${Math.max(2, x(r.fmaxG) - left)}" height="18" rx="3" fill="${r.color}" fill-opacity=".3" stroke="#111" stroke-width="2" stroke-dasharray="4 3"/>`;
+    s += `<rect x="${left}" y="${y + 4}" width="${Math.max(2, x(r.gbps) - left)}" height="18" rx="3" fill="${r.color}" stroke="#111" stroke-width="2"/>`;
+    s += `<text x="${x(r.fmaxG ? Math.max(r.gbps, r.fmaxG) : r.gbps) + 8}" y="${y + 17}" fill="#111" font-size="12" font-weight="700" font-family="var(--mono)">${fmtGbps(r.gbps)}${r.fmaxG ? ` <tspan fill="#5c5a55">→ ${fmtGbps(r.fmaxG)}</tspan>` : ""}</text>`;
   });
   el.innerHTML = s + "</svg>";
 }
@@ -645,10 +649,10 @@ $("#ctGo").addEventListener("click", () => requireBoard() && job($("#ctGo"), asy
   let s = `<svg viewBox="0 0 ${W} ${H}">`;
   for (let L = 8; L <= 14; L++) {
     const gx = 60 + (L - 8) * 105;
-    s += `<text x="${gx + 40}" y="${H - 6}" fill="#6f7b8e" font-size="11" text-anchor="middle">${L} cycles</text>`;
+    s += `<text x="${gx + 40}" y="${H - 6}" fill="#111" font-size="11" font-weight="700" text-anchor="middle">${L} cycles</text>`;
     [1, 2, 3].forEach((c, j) => {
       const n = hist[c][L] || 0, h = n / 300 * (H - 40);
-      s += `<rect x="${gx + 10 + j * 22}" y="${H - 22 - h}" width="18" height="${Math.max(h, 1)}" rx="2" fill="${cc(c)}" fill-opacity="${n ? 1 : .15}"/>`;
+      s += `<rect x="${gx + 10 + j * 22}" y="${H - 22 - h}" width="18" height="${Math.max(h, 1)}" rx="2" fill="${cc(c)}" fill-opacity="${n ? 1 : .2}" stroke="#111" stroke-width="${n ? 2 : 0}"/>`;
     });
   }
   $("#ctChart").innerHTML = s + "</svg>";
