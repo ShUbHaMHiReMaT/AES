@@ -1,0 +1,10 @@
+{
+  "part": "xc7a100tcsg324-1",
+  "built": "2026-10-06 12:56",
+  "clock_mhz": 100,
+  "device": {"lut": 63400, "ff": 126800, "bram": 135, "dsp": 240},
+  "total": {"lut": 13283, "ff": 6427, "bram": 0, "dsp": 0},
+  "timing": {"wns_ns": 0.522, "whs_ns": 0.027, "fmax_mhz": 105.5},
+  "power_w": {"total": 0.595, "dynamic": 0.497, "static": 0.099},
+  "cores": {"iterative": {"name": "aes128_iterative", "lut": 1248, "ff": 398, "slack_ns": 2.173, "fmax_mhz": 127.8}, "ii10": {"name": "aes128_iterative_ii10", "lut": 1421, "ff": 655, "slack_ns": 0.522, "fmax_mhz": 105.5}, "pipelined": {"name": "aes128_pipelined", "lut": 9393, "ff": 2699, "slack_ns": 1.551, "fmax_mhz": 118.4}, "bridge": {"name": "UART bridge", "lut": 780, "ff": 1613, "slack_ns": 2.632, "fmax_mhz": 135.7}}
+}

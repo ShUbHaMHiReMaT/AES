@@ -30,28 +30,11 @@ if "%~1"=="" (
     set CORES=%~1
 )
 
+REM The per-core work lives in a subroutine: cmd does not allow a goto label
+REM inside a parenthesised for-body, and "set X=a & set Y=b" inside one keeps
+REM the trailing spaces in X.
 set RC=0
-for %%C in (%CORES%) do (
-    if "%%C"=="iterative"  ( set TB=tb_aes128_iterative       & set RTL=rtl\aes128_iterative.v )
-    if "%%C"=="ii10"       ( set TB=tb_aes128_iterative_ii10  & set RTL=rtl\aes128_iterative_ii10.v )
-    if "%%C"=="pipelined"  ( set TB=tb_aes128_pipelined       & set RTL=rtl\aes128_pipelined.v )
-
-    echo.
-    echo ============================================================
-    echo  xsim: %%C
-    echo ============================================================
-
-    xvlog --nolog -sv tb\!TB!.v %SHARED% !RTL!
-    if errorlevel 1 ( set RC=1 & goto :next )
-
-    xelab --nolog -debug typical -top !TB! -snapshot !TB!_snap
-    if errorlevel 1 ( set RC=1 & goto :next )
-
-    xsim --nolog !TB!_snap -runall
-    if errorlevel 1 set RC=1
-
-    :next
-)
+for %%C in (%CORES%) do call :run_core %%C
 
 echo.
 if %RC%==0 (
@@ -60,3 +43,26 @@ if %RC%==0 (
     echo xsim regression FAILED
 )
 exit /b %RC%
+
+:run_core
+if "%~1"=="iterative" set "TB=tb_aes128_iterative"
+if "%~1"=="iterative" set "RTL=rtl\aes128_iterative.v"
+if "%~1"=="ii10"      set "TB=tb_aes128_iterative_ii10"
+if "%~1"=="ii10"      set "RTL=rtl\aes128_iterative_ii10.v"
+if "%~1"=="pipelined" set "TB=tb_aes128_pipelined"
+if "%~1"=="pipelined" set "RTL=rtl\aes128_pipelined.v"
+
+echo.
+echo ============================================================
+echo  xsim: %~1
+echo ============================================================
+
+call xvlog --nolog -sv tb\%TB%.v %SHARED% %RTL%
+if errorlevel 1 ( set RC=1& exit /b )
+
+call xelab --nolog -debug typical -top %TB% -snapshot %TB%_snap
+if errorlevel 1 ( set RC=1& exit /b )
+
+call xsim --nolog %TB%_snap -runall
+if errorlevel 1 set RC=1
+exit /b

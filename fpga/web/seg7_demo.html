@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexys Display</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #17171a;
+    --ink-2: #55545a;
+    --muted: #8b8a90;
+    --line: rgba(0, 0, 0, 0.09);
+    --accent: #c8102e;
+    --ok: #1a8f5a;
+    --warn: #b7791f;
+    --bad: #c8102e;
+    --panel: #121214;
+    --seg-on: #ff2a2a;
+    --seg-off: #2a1414;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f0f11;
+      --surface: #19191c;
+      --ink: #f2f2f3;
+      --ink-2: #bdbcc2;
+      --muted: #85848b;
+      --line: rgba(255, 255, 255, 0.09);
+      --panel: #070708;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--sans);
+  }
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 32px 18px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .sub { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; }
+  .conn { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    font: 12px var(--mono); color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 11px; background: var(--surface);
+  }
+  .pill::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--dot, var(--muted));
+  }
+  .pill.on  { --dot: var(--ok); }
+  .pill.err { --dot: var(--bad); }
+
+  button {
+    font: 600 14px var(--sans);
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 9px 16px;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ---- the display ---- */
+  .board {
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 26px 22px 18px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,.18);
+  }
+  .digits { display: block; width: 100%; height: auto; }
+  .board-foot {
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    margin-top: 12px; font: 12px var(--mono); color: #8d8d94;
+  }
+  .board-foot b { color: #d7d7dc; font-weight: 600; }
+
+  /* ---- controls ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .grow { flex: 1 1 260px; }
+  input[type=text] {
+    width: 100%;
+    font: 600 22px var(--mono);
+    letter-spacing: .04em;
+    padding: 12px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .opts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px 20px;
+  }
+  .opt { display: flex; flex-direction: column; gap: 5px; }
+  .opt label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+  .opt .val { font: 12px var(--mono); color: var(--ink-2); }
+  select {
+    font: 14px var(--sans); padding: 7px 9px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; }
+  .presets button { font: 500 13px var(--mono); padding: 6px 11px; }
+
+  .note { font-size: 13px; color: var(--warn); min-height: 1.2em; margin: 0; }
+
+  .log {
+    font: 12px/1.6 var(--mono);
+    color: var(--ink-2);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 10px 12px;
+    height: 150px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log .ok  { color: var(--ok); }
+  .log .bad { color: var(--bad); }
+
+  .unsupported {
+    background: var(--surface); border: 1px solid var(--bad);
+    border-radius: 12px; padding: 16px 18px; color: var(--ink);
+  }
+  h2 { margin: 0; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Nexys A7 · 7-segment</h1>
+      <p class="sub">Type anything. It appears on the board's 8-digit display.</p>
+    </div>
+    <div class="conn">
+      <span id="status" class="pill">not connected</span>
+      <button id="connectBtn" class="primary">Connect board</button>
+    </div>
+  </header>
+
+  <div id="noSerial" class="unsupported" hidden>
+    <h2>This browser can't talk to serial ports</h2>
+    <p>Open this page in <b>Chrome</b> or <b>Edge</b>, served from
+    <code>http://localhost</code> (run <code>fpga\web\serve.ps1</code>).</p>
+  </div>
+
+  <section class="board" aria-label="Preview of the board display">
+    <svg id="digits" class="digits" viewBox="0 0 520 100" role="img"
+         aria-label="7-segment preview"></svg>
+    <div class="board-foot">
+      <span>preview · <b id="modeLabel">static</b></span>
+      <span id="boardState">board: —</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <div class="grow">
+        <input id="text" type="text" maxlength="60" value="HELLO AES-128"
+               autocomplete="off" spellcheck="false" aria-label="Text to display">
+      </div>
+      <button id="sendBtn" class="primary" disabled>Send to board</button>
+    </div>
+    <p id="note" class="note"></p>
+
+    <div class="opts">
+      <div class="opt">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="auto">Auto (scroll if &gt; 8)</option>
+          <option value="static">Static</option>
+          <option value="scroll">Scroll</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="align">Static alignment</label>
+        <select id="align">
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="speed">Scroll speed</label>
+        <input id="speed" type="range" min="0" max="30" value="15">
+        <span class="val" id="speedVal"></span>
+      </div>
+      <div class="opt">
+        <label for="bright">Brightness</label>
+        <input id="bright" type="range" min="0" max="7" value="7">
+        <span class="val" id="brightVal"></span>
+      </div>
+    </div>
+
+    <label class="check">
+      <input id="live" type="checkbox" checked>
+      Live: send while I type
+    </label>
+
+    <div class="presets" id="presets"></div>
+  </section>
+
+  <section class="card">
+    <h2>Link</h2>
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
+
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Font: segment bits, a = bit 0 ... g = bit 6, dp = bit 7.
+// Shared with the FPGA: the board shows exactly these bits.
+// ---------------------------------------------------------------------------
+const UPPER = {
+  "0":0x3F,"1":0x06,"2":0x5B,"3":0x4F,"4":0x66,"5":0x6D,"6":0x7D,"7":0x07,
+  "8":0x7F,"9":0x6F,
+  "A":0x77,"B":0x7C,"C":0x39,"D":0x5E,"E":0x79,"F":0x71,"G":0x3D,"H":0x76,
+  "I":0x30,"J":0x1E,"K":0x75,"L":0x38,"M":0x37,"N":0x54,"O":0x3F,"P":0x73,
+  "Q":0x67,"R":0x50,"S":0x6D,"T":0x78,"U":0x3E,"V":0x3E,"W":0x7E,"X":0x76,
+  "Y":0x6E,"Z":0x5B,
+  " ":0x00,"-":0x40,"_":0x08,"=":0x48,"\"":0x22,"'":0x02,"`":0x20,
+  "[":0x39,"]":0x0F,"(":0x39,")":0x0F,"{":0x39,"}":0x0F,
+  "?":0x53,"!":0x82,"/":0x52,"\\":0x64,"|":0x30,"^":0x23,"°":0x63,
+  "<":0x58,">":0x4C,"~":0x01,"+":0x46,"*":0x63,"#":0x49,
+};
+// lowercase forms that read better than their capitals
+const LOWER = { "c":0x58, "h":0x74, "o":0x5C, "u":0x1C, "i":0x10, "n":0x54, "r":0x50, "t":0x78 };
+
+function encode(text) {
+  const segs = [];
+  const bad = new Set();
+  for (const ch of text) {
+    if (ch === "." || ch === ",") {
+      // decimal point rides on the previous digit, like a calculator
+      if (segs.length && !(segs[segs.length - 1] & 0x80)) segs[segs.length - 1] |= 0x80;
+      else segs.push(0x80);
+      continue;
+    }
+    let s = LOWER[ch];
+    if (s === undefined) s = UPPER[ch.toUpperCase()];
+    if (s === undefined) { bad.add(ch); s = 0x00; }
+    segs.push(s);
+  }
+  return { segs, bad: [...bad] };
+}
+
+const MAX_LEN = 64;   // FPGA buffer
+const GAP = 4;        // blanks between repeats when scrolling
+
+function buildPayload(text, opts) {
+  const { segs, bad } = encode(text);
+  const scroll = opts.mode === "scroll" || (opts.mode === "auto" && segs.length > 8);
+  let out, truncated = false;
+  if (scroll) {
+    out = segs.slice(0, MAX_LEN - GAP);
+    truncated = segs.length > out.length;
+    out = out.concat(new Array(GAP).fill(0));
+    while (out.length < 8) out.push(0);
+  } else {
+    out = segs.slice(0, 8);
+    truncated = segs.length > 8;
+    const pad = new Array(8 - out.length).fill(0);
+    out = opts.align === "right" ? pad.concat(out) : out.concat(pad);
+  }
+  return { segs: out, scroll, bad, truncated };
+}
+
+function frameBytes(p, opts) {
+  const flags = (p.scroll ? 1 : 0) | ((opts.bright & 7) << 1);
+  return new Uint8Array([0xA5, flags, opts.speed & 0xFF, p.segs.length, ...p.segs]);
+}
+
+// ---------------------------------------------------------------------------
+// Preview: same windowing and timing as the FPGA
+// ---------------------------------------------------------------------------
+const svg = document.getElementById("digits");
+const NS = "http://www.w3.org/2000/svg";
+const digitEls = [];
+
+function hseg(cx, cy, L, t) {
+  const h = t / 2;
+  return `${cx-L/2},${cy} ${cx-L/2+h},${cy-h} ${cx+L/2-h},${cy-h} ${cx+L/2},${cy} ${cx+L/2-h},${cy+h} ${cx-L/2+h},${cy+h}`;
+}
+function vseg(cx, cy, L, t) {
+  const h = t / 2;
+  return `${cx},${cy-L/2} ${cx+h},${cy-L/2+h} ${cx+h},${cy+L/2-h} ${cx},${cy+L/2} ${cx-h},${cy+L/2-h} ${cx-h},${cy-L/2+h}`;
+}
+(function buildDigits() {
+  const T = 8, W = 40, H = 80;
+  const shapes = [
+    ["poly", hseg(W/2, 4, W - 6, T)],          // a
+    ["poly", vseg(W, H*0.25 + 2, H/2 - 8, T)],  // b
+    ["poly", vseg(W, H*0.75 + 2, H/2 - 8, T)],  // c
+    ["poly", hseg(W/2, H + 4, W - 6, T)],      // d
+    ["poly", vseg(0, H*0.75 + 2, H/2 - 8, T)],  // e
+    ["poly", vseg(0, H*0.25 + 2, H/2 - 8, T)],  // f
+    ["poly", hseg(W/2, H/2 + 4, W - 6, T)],    // g
+  ];
+  for (let d = 0; d < 8; d++) {
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("transform", `translate(${20 + d * 62},6) skewX(-7)`);
+    const parts = [];
+    for (const [, pts] of shapes) {
+      const p = document.createElementNS(NS, "polygon");
+      p.setAttribute("points", pts);
+      g.appendChild(p);
+      parts.push(p);
+    }
+    const dp = document.createElementNS(NS, "circle");
+    dp.setAttribute("cx", W + 9); dp.setAttribute("cy", H + 4); dp.setAttribute("r", 4.2);
+    g.appendChild(dp);
+    parts.push(dp);
+    svg.appendChild(g);
+    digitEls.push(parts);
+  }
+})();
+
+let preview = { segs: new Array(8).fill(0), scroll: false };
+let pos = 0;
+let lastStep = performance.now();
+
+function paint() {
+  const opts = readOpts();
+  const alpha = 0.35 + 0.65 * ((opts.bright + 1) / 8);
+  const on = getComputedStyle(document.documentElement).getPropertyValue("--seg-on").trim();
+  const off = getComputedStyle(document.documentElement).getPropertyValue("--seg-off").trim();
+  for (let d = 0; d < 8; d++) {
+    const n = preview.segs.length;
+    const s = preview.scroll ? preview.segs[(pos + d) % n] : preview.segs[d];
+    digitEls[d].forEach((el, bit) => {
+      const lit = (s >> bit) & 1;
+      el.setAttribute("fill", lit ? on : off);
+      el.setAttribute("fill-opacity", lit ? alpha.toFixed(2) : "1");
+      el.style.filter = lit ? "drop-shadow(0 0 3px rgba(255,40,40,.55))" : "none";
+    });
+  }
+}
+
+function tick(now) {
+  if (preview.scroll) {
+    const stepMs = (readOpts().speed + 1) * 21;
+    if (now - lastStep >= stepMs) {
+      pos = (pos + 1) % preview.segs.length;
+      lastStep = now;
+      paint();
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const textEl = $("text"), sendBtn = $("sendBtn"), connectBtn = $("connectBtn");
+
+function readOpts() {
+  return {
+    mode: $("mode").value,
+    align: $("align").value,
+    speed: 30 - Number($("speed").value),    // slider right = faster
+    bright: Number($("bright").value),
+  };
+}
+
+function refresh() {
+  const opts = readOpts();
+  const p = buildPayload(textEl.value, opts);
+  preview = p;
+  pos = 0;
+  lastStep = performance.now();
+  $("modeLabel").textContent = p.scroll ? "scrolling" : "static";
+  $("speedVal").textContent = `${((opts.speed + 1) * 21)} ms / step`;
+  $("brightVal").textContent = `${opts.bright + 1} / 8`;
+  const notes = [];
+  if (p.bad.length) notes.push(`No 7-segment shape for: ${p.bad.map(c => JSON.stringify(c)).join(" ")} (shown blank)`);
+  if (p.truncated) notes.push(p.scroll ? `Only the first ${MAX_LEN - GAP} characters fit` : "Static mode shows the first 8 characters");
+  $("note").textContent = notes.join(" · ");
+  paint();
+  return p;
+}
+
+const PRESETS = ["HELLO AES-128", "12345678", "3.14159265", "COFFEE", "dEAd bEEF",
+                 "ECE PROJECT", "FPGA ROCKS", "-- 2026 --"];
+for (const t of PRESETS) {
+  const b = document.createElement("button");
+  b.textContent = t;
+  b.addEventListener("click", () => { textEl.value = t; refresh(); if (port) queueSend(); });
+  $("presets").appendChild(b);
+}
+
+let liveTimer = null;
+textEl.addEventListener("input", () => {
+  refresh();
+  if (port && $("live").checked) {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(queueSend, 150);
+  }
+});
+textEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && port) queueSend(); });
+for (const id of ["mode", "align", "speed", "bright"]) {
+  $(id).addEventListener("input", () => {
+    refresh();
+    if (port && $("live").checked) { clearTimeout(liveTimer); liveTimer = setTimeout(queueSend, 150); }
+  });
+}
+sendBtn.addEventListener("click", queueSend);
+
+// ---------------------------------------------------------------------------
+// Web Serial
+// ---------------------------------------------------------------------------
+let port = null, writer = null, reader = null;
+let rxBuf = [];
+let pending = null;       // { len, t0, resolve }
+let sending = false, sendAgain = false;
+
+function log(msg, cls) {
+  const el = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(text, cls) {
+  const s = $("status");
+  s.textContent = text;
+  s.className = "pill" + (cls ? " " + cls : "");
+}
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0403 }] });
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    const info = port.getInfo();
+    setStatus("connected", "on");
+    log(`opened port (USB ${info.usbVendorId?.toString(16)}:${info.usbProductId?.toString(16)}) at 115200`, "ok");
+    connectBtn.textContent = "Disconnect";
+    sendBtn.disabled = false;
+    readLoop();
+    queueSend();
+  } catch (e) {
+    port = null;
+    if (e.name !== "NotFoundError") {
+      setStatus("error", "err");
+      log(`could not open: ${e.message}. Is another program (e.g. a terminal) using COM9?`, "bad");
+    }
+  }
+}
+
+async function disconnect() {
+  try {
+    if (reader) { await reader.cancel(); }
+    if (writer) { writer.releaseLock(); }
+    if (port) { await port.close(); }
+  } catch (e) { /* closing anyway */ }
+  port = writer = reader = null;
+  setStatus("not connected");
+  connectBtn.textContent = "Connect board";
+  sendBtn.disabled = true;
+  $("boardState").textContent = "board: —";
+  log("disconnected");
+}
+
+async function readLoop() {
+  while (port && port.readable) {
+    reader = port.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        for (const b of value) onByte(b);
+      }
+    } catch (e) {
+      log(`read error: ${e.message}`, "bad");
+      break;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}
+
+function onByte(b) {
+  rxBuf.push(b);
+  while (rxBuf.length >= 2) {
+    if (rxBuf[0] !== 0x5A) { rxBuf.shift(); continue; }
+    const len = rxBuf[1];
+    rxBuf.splice(0, 2);
+    if (pending && pending.len === len) {
+      const ms = (performance.now() - pending.t0).toFixed(1);
+      pending.resolve(true);
+      pending = null;
+      $("boardState").innerHTML = `board: <b>showing</b> · ack ${ms} ms`;
+      log(`board acknowledged ${len} patterns in ${ms} ms`, "ok");
+    }
+  }
+}
+
+function waitAck(len) {
+  return new Promise((resolve) => {
+    pending = { len, t0: performance.now(), resolve };
+    setTimeout(() => {
+      if (pending && pending.len === len) { pending = null; resolve(false); }
+    }, 600);
+  });
+}
+
+// Coalesce: while one frame is in flight, only the newest text is sent next.
+async function queueSend() {
+  if (!port) return;
+  if (sending) { sendAgain = true; return; }
+  sending = true;
+  do {
+    sendAgain = false;
+    const opts = readOpts();
+    const p = refresh();
+    const bytes = frameBytes(p, opts);
+    try {
+      const ack = waitAck(p.segs.length);
+      await writer.write(bytes);
+      log(`sent "${textEl.value}" -> ${bytes.length} bytes`);
+      if (!(await ack)) {
+        log("no acknowledgement from the board -- is seg7_text.bit loaded?", "bad");
+        $("boardState").textContent = "board: no reply";
+        await new Promise(r => setTimeout(r, 40));   // let the FPGA drop any partial frame
+      }
+    } catch (e) {
+      log(`write failed: ${e.message}`, "bad");
+      break;
+    }
+  } while (sendAgain);
+  sending = false;
+}
+
+connectBtn.addEventListener("click", () => (port ? disconnect() : connect()));
+
+if (!("serial" in navigator)) {
+  $("noSerial").hidden = false;
+  connectBtn.disabled = true;
+  setStatus("unsupported browser", "err");
+} else {
+  navigator.serial.addEventListener("disconnect", (e) => {
+    if (port && e.target === port) { log("board unplugged", "bad"); disconnect(); }
+  });
+}
+
+refresh();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

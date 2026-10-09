@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AES-128 Accelerator Console</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- ================================================================ nav -->
+  <nav class="side" aria-label="Sections">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" rx="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 22 L16 9 L22 22 M12.5 17h7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">AES-128 Accelerator</div>
+        <div class="brand-sub">Abheda Solutions · VLSI</div>
+      </div>
+    </div>
+    <ul class="nav">
+      <li><a href="#overview" class="active" data-view="overview"><span class="ni">◎</span>Overview</a></li>
+      <li><a href="#encrypt" data-view="encrypt"><span class="ni">⇄</span>Encrypt</a></li>
+      <li><a href="#inside" data-view="inside"><span class="ni">▦</span>Inside AES</a></li>
+      <li><a href="#bench" data-view="bench"><span class="ni">⚡</span>Benchmark</a></li>
+      <li><a href="#image" data-view="image"><span class="ni">◩</span>Image Lab</a></li>
+      <li><a href="#verify" data-view="verify"><span class="ni">✓</span>NIST Verification</a></li>
+      <li><a href="#board" data-view="board"><span class="ni">⌘</span>Board Control</a></li>
+      <li><a href="#impl" data-view="impl"><span class="ni">▤</span>Implementation</a></li>
+    </ul>
+    <div class="side-foot">
+      <div>Nexys A7-100T · xc7a100t</div>
+      <div>TechXcelerate SIP 2026</div>
+      <div>KLE Tech · Dr. M. S. Sheshgiri</div>
+    </div>
+  </nav>
+
+  <!-- ============================================================== main -->
+  <main>
+    <header class="topbar">
+      <div class="chips" id="chips">
+        <span class="chip" id="chipLink"><i class="dot"></i><span>offline</span></span>
+        <span class="chip" title="FPGA die temperature (XADC)"><span class="k">TEMP</span><b id="chipTemp">—</b></span>
+        <span class="chip" title="Core supply VCCINT (XADC)"><span class="k">VCCINT</span><b id="chipVcc">—</b></span>
+        <span class="chip" title="Time since configuration"><span class="k">UPTIME</span><b id="chipUp">—</b></span>
+        <span class="chip" title="Blocks encrypted by the FPGA since reset"><span class="k">BLOCKS</span><b id="chipBlocks">—</b></span>
+      </div>
+      <button id="connectBtn" class="btn primary">Connect board</button>
+    </header>
+
+    <div id="noSerial" class="banner bad" hidden>
+      This browser can't reach serial ports. Open the page in <b>Chrome</b> or <b>Edge</b> via
+      <code>START_CONSOLE.bat</code> (it serves <code>http://localhost:8000</code>).
+    </div>
+
+    <!-- ========================================================= overview -->
+    <section class="view active" id="view-overview">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">Live on silicon · Artix-7 · 100 MHz</p>
+          <h1>A dedicated AES-128 engine,<br>verified on real hardware.</h1>
+          <p class="lede">Three encryption cores run inside the FPGA. This console drives them over USB:
+            encrypt data, measure throughput in hardware, watch every round, and check each result
+            against an independent model running in your browser.</p>
+          <div class="hero-actions">
+            <button class="btn primary" data-goto="encrypt">Encrypt something</button>
+            <button class="btn" data-goto="bench">Measure throughput</button>
+            <button class="btn ghost" id="ovSelftest">Run self-test</button>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat"><span class="k">Latency</span><b id="hsLat">11</b><span class="u">cycles · 110 ns</span></div>
+          <div class="stat"><span class="k">Best measured</span><b id="hsGbps">—</b><span class="u">Gbps @ 100 MHz</span></div>
+          <div class="stat"><span class="k">Blocks verified</span><b id="hsVerified">0</b><span class="u">vs browser model</span></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h2>The board, live</h2><span class="sub" id="boardMirrorNote">connect to mirror the board</span></div>
+          <div id="boardMirror" class="board-mirror"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Project objectives</h2><span class="sub">from the proposal, checked live</span></div>
+          <div id="scorecard" class="scorecard"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== encrypt -->
+    <section class="view" id="view-encrypt">
+      <div class="view-head">
+        <h1>Encrypt on the FPGA</h1>
+        <p>Your data goes over USB to the board, through the selected core, and back. Every block is
+          re-computed in the browser and compared.</p>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label for="encInput">Message</label>
+          <div class="seg-toggle" role="tablist" id="encFormat">
+            <button class="on" data-fmt="text">Text</button><button data-fmt="hex">Hex block</button>
+          </div>
+          <textarea id="encInput" rows="2" spellcheck="false">Hello from Abheda Solutions!</textarea>
+          <div class="hint" id="encHint"></div>
+        </div>
+        <div class="field">
+          <label for="encKey">Key (128-bit hex)</label>
+          <div class="row">
+            <input id="encKey" class="mono grow" spellcheck="false" value="2b7e151628aed2a6abf7158809cf4f3c">
+            <button class="btn" id="encRandKey">Random</button>
+            <button class="btn" id="encNistKey">FIPS-197</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Core</label>
+          <div class="core-pick" id="encCores"></div>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="encGo">Encrypt on FPGA</button>
+          <button class="btn" id="encAll">Run on all three cores</button>
+          <label class="check"><input type="checkbox" id="encShow" checked> show ciphertext on the 7-segment display</label>
+        </div>
+      </div>
+
+      <div class="card" id="encResult" hidden>
+        <div class="card-head"><h2>Result</h2><span class="sub" id="encMeta"></span></div>
+        <div id="encTable"></div>
+        <div class="field">
+          <label>Ciphertext</label>
+          <div class="mono out" id="encCt"></div>
+        </div>
+        <div class="field">
+          <label>Decrypted in the browser</label>
+          <div class="mono out" id="encBack"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== inside -->
+    <section class="view" id="view-inside">
+      <div class="view-head">
+        <h1>Inside AES-128</h1>
+        <p>Step through the ten rounds the hardware executes. The intermediate states come from the
+          browser model; the final ciphertext is checked against the FPGA.</p>
+      </div>
+      <div class="card">
+        <div class="row">
+          <div class="field grow"><label for="inKey">Key</label><input id="inKey" class="mono" value="000102030405060708090a0b0c0d0e0f"></div>
+          <div class="field grow"><label for="inPt">Plaintext</label><input id="inPt" class="mono" value="00112233445566778899aabbccddeeff"></div>
+        </div>
+        <div class="round-bar">
+          <button class="btn" id="inPrev" aria-label="Previous round">◀</button>
+          <input type="range" id="inRound" min="0" max="10" value="1" aria-label="Round">
+          <button class="btn" id="inNext" aria-label="Next round">▶</button>
+          <button class="btn" id="inPlay">Play</button>
+          <span class="round-label" id="inRoundLabel"></span>
+        </div>
+        <div id="inStages" class="stages"></div>
+        <div class="inside-foot">
+          <div class="mono" id="inFinal"></div>
+          <button class="btn primary" id="inFpga">Check on FPGA</button>
+          <span id="inFpgaRes"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Key schedule</h2><span class="sub">computed on the fly in hardware: 4 S-boxes, 128 flip-flops</span></div>
+        <div id="inKeys" class="keys"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ bench -->
+    <section class="view" id="view-bench">
+      <div class="view-head">
+        <h1>Hardware benchmark</h1>
+        <p>The FPGA streams blocks through a core back to back and counts clock cycles itself, so
+          the USB link plays no part in the figure. The XOR of every ciphertext is checked
+          against WebCrypto.</p>
+      </div>
+      <div class="card">
+        <div class="row wrap">
+          <div class="field"><label for="bnN">Blocks per run</label>
+            <select id="bnN">
+              <option value="1024">1 K</option><option value="65536">64 K</option>
+              <option value="1048576" selected>1 M (16 MB)</option><option value="16777216">16 M (256 MB)</option>
+            </select></div>
+          <div class="field"><label>Cores</label><div class="core-pick multi" id="bnCores"></div></div>
+          <div class="field"><label>&nbsp;</label><button class="btn primary" id="bnGo">Run benchmark</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Throughput</h2><span class="sub">Gbps, log scale · measured at 100 MHz on the board</span></div>
+        <div id="bnChart" class="chart"></div>
+        <div id="bnTable"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Constant-time check</h2><span class="sub">timing attacks need the latency to depend on the data</span></div>
+        <p class="muted">Encrypts random blocks with random keys on every core and records the latency the hardware counted.</p>
+        <div class="row"><button class="btn" id="ctGo">Run 300 random blocks per core</button><span id="ctRes"></span></div>
+        <div id="ctChart" class="chart small"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ image -->
+    <section class="view" id="view-image">
+      <div class="view-head">
+        <h1>Image encryption lab</h1>
+        <p>The reference paper's demo. Every pixel block is encrypted by the FPGA. ECB leaks the
+          picture's structure; CTR, built from the same core, does not.</p>
+      </div>
+      <div class="card">
+        <div class="row wrap">
+          <div class="field"><label>Image</label>
+            <div class="row">
+              <button class="btn" id="imSample">Sample</button>
+              <label class="btn file">Choose file<input type="file" id="imFile" accept="image/*" hidden></label>
+            </div></div>
+          <div class="field"><label for="imSize">Size</label>
+            <select id="imSize"><option value="64">64 × 64 · 768 blocks</option><option value="128" selected>128 × 128 · 3 072 blocks</option><option value="256">256 × 256 · 12 288 blocks</option></select></div>
+          <div class="field"><label>Core</label><div class="core-pick" id="imCores"></div></div>
+          <div class="field"><label>&nbsp;</label><button class="btn primary" id="imGo">Encrypt on FPGA</button></div>
+        </div>
+        <div class="progress" id="imProg" hidden><div class="bar"></div><span class="ptext"></span></div>
+      </div>
+      <div class="images">
+        <figure><canvas id="imOrig" width="256" height="256"></canvas><figcaption>Original</figcaption></figure>
+        <figure><canvas id="imEcb" width="256" height="256"></canvas><figcaption>AES-ECB on the FPGA <span class="tag warn">leaks shapes</span></figcaption></figure>
+        <figure><canvas id="imCtr" width="256" height="256"></canvas><figcaption>AES-CTR on the FPGA <span class="tag ok">no structure</span></figcaption></figure>
+        <figure><canvas id="imDec" width="256" height="256"></canvas><figcaption>ECB decrypted in the browser</figcaption></figure>
+      </div>
+      <div class="card" id="imStats" hidden></div>
+    </section>
+
+    <!-- =========================================================== verify -->
+    <section class="view" id="view-verify">
+      <div class="view-head">
+        <h1>NIST FIPS-197 verification on hardware</h1>
+        <p>Published known-answer vectors plus random keys and plaintexts, through every core,
+          each answer checked against the browser model.</p>
+      </div>
+      <div class="card">
+        <div class="row wrap">
+          <div class="field"><label for="vfN">Random vectors per core</label>
+            <select id="vfN"><option>100</option><option selected>1000</option><option>5000</option></select></div>
+          <div class="field"><label>&nbsp;</label><button class="btn primary" id="vfGo">Run verification</button></div>
+          <div class="field grow"><label>&nbsp;</label><div class="progress" id="vfProg" hidden><div class="bar"></div><span class="ptext"></span></div></div>
+        </div>
+      </div>
+      <div class="card"><div id="vfTable"></div></div>
+      <div class="card"><div class="card-head"><h2>Known-answer tests</h2></div><div id="vfKat"></div></div>
+    </section>
+
+    <!-- ============================================================ board -->
+    <section class="view" id="view-board">
+      <div class="view-head">
+        <h1>Board control</h1>
+        <p>Everything on the board is reachable from here, and the board can drive the page too.</p>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h2>7-segment display</h2></div>
+          <div class="seg-preview" id="dsPreview"></div>
+          <div class="row"><input id="dsText" class="mono grow" maxlength="60" value="ABHEDA AES-128"><button class="btn primary" id="dsSend">Show</button><button class="btn" id="dsAuto">Auto</button></div>
+          <div class="row wrap tight">
+            <label class="check"><input type="checkbox" id="dsLive" checked> live</label>
+            <label class="inline">speed <input type="range" id="dsSpeed" min="0" max="30" value="18"></label>
+            <label class="inline">brightness <input type="range" id="dsBright" min="0" max="7" value="7"></label>
+          </div>
+          <div class="hint" id="dsNote"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>LEDs</h2><span class="sub">click to toggle</span></div>
+          <div class="led-row" id="ldRow"></div>
+          <div class="row wrap">
+            <label class="check"><input type="checkbox" id="ldManual"> page controls the LEDs</label>
+            <button class="btn" id="ldKnight">Scanner</button>
+            <button class="btn" id="ldCount">Binary count</button>
+            <button class="btn" id="ldClear">Clear</button>
+          </div>
+          <div class="row wrap">
+            <span class="muted">LD16</span><div class="rgb-pick" id="rgb16"></div>
+            <span class="muted">LD17</span><div class="rgb-pick" id="rgb17"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Switches and buttons</h2><span class="sub">read live from the board</span></div>
+          <div class="sw-row" id="swRow"></div>
+          <div class="btn-row" id="btRow"></div>
+          <label class="check"><input type="checkbox" id="btActions" checked> board buttons drive the page</label>
+          <ul class="muted small-list">
+            <li><b>SW1–SW0</b> pick the core (1 iterative, 2 overlapped, 3 pipelined)</li>
+            <li><b>BTNU</b> encrypt a random block, ciphertext scrolls on the display</li>
+            <li><b>BTND</b> run a 1 M-block benchmark, Gbps on the display</li>
+            <li><b>BTNC</b> self-test (in hardware)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Self-test</h2><span class="sub">FIPS-197 C.1 through each core, inside the FPGA</span></div>
+          <div id="stView" class="selftest"></div>
+          <button class="btn primary" id="stGo">Run self-test</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= impl -->
+    <section class="view" id="view-impl">
+      <div class="view-head">
+        <h1>Implementation</h1>
+        <p>Numbers from the routed design that is on the board, written by
+          <code>fpga/scripts/build.tcl</code>.</p>
+      </div>
+      <div id="implBody"><div class="card muted">Loading build_info.json…</div></div>
+    </section>
+
+    <!-- ============================================================== log -->
+    <details class="log" id="logBox">
+      <summary>Link log <span id="logCount"></span></summary>
+      <div id="log"></div>
+    </details>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
