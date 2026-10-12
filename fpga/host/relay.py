@@ -89,9 +89,12 @@ class SerialHub:
 
 
 def pump(src_read, dst_write, stop):
+    # src_read returns bytes (data), b"" (nothing yet), or None (peer closed/EOF)
     try:
         while not stop.is_set():
             data = src_read()
+            if data is None:
+                break
             if data:
                 dst_write(data)
     except OSError:
@@ -124,11 +127,12 @@ def serve(hub, host, port):
         def sock_read():
             conn.settimeout(0.02)
             try:
-                return conn.recv(4096)
+                b = conn.recv(4096)
+                return None if b == b"" else b   # b"" from recv means EOF
             except socket.timeout:
                 return b""
             except OSError:
-                return b""
+                return None
 
         t2 = threading.Thread(target=pump,
                               args=(sock_read, hub.write, stop), daemon=True)
