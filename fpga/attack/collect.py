@@ -24,6 +24,7 @@ import time
 import numpy as np
 
 CMD_CAPTURE = 0x50
+CMD_CALIB = 0x51
 RESP = 22
 CORE_NAMES = {1: "iterative", 2: "ii10", 3: "pipelined"}
 
@@ -82,6 +83,48 @@ def connect(port=None, server=None, baud=1_000_000):
             sys.exit("no FTDI port found; pass --port or run via --server")
         port = sorted(ftdi, key=lambda p: p.device)[-1].device
     return Transport(ser=serial.Serial(port, baud, timeout=2.0))
+
+
+def set_calibration(dev, shift, off):
+    """Set the sensor readout: sample = clamp((popcount>>shift) - off, 0, 255)."""
+    arg = (shift & 0x7) | ((off & 0xFF) << 8)
+    dev.write(bytes([CMD_CALIB]) + struct.pack(">I", arg) + b"\0" * 32)
+    r = dev.read_exact(RESP)
+    if r[0] != CMD_CALIB:
+        raise IOError(f"bad reply 0x{r[0]:02x} to calibrate")
+
+
+def auto_calibrate(dev, core=1, key=b"\0" * 16, n_probe=40, verbose=True):
+    """Sweep shift/off until the sensor samples sit mid-range with real variance.
+
+    Returns (shift, off). Picks the shift whose raw count lands highest without
+    railing, then an offset that centres the useful swing around 128.
+    """
+    import numpy as np
+    pt0 = bytes(range(16))
+    best = None
+    for shift in range(0, 6):
+        set_calibration(dev, shift, 0)
+        a = np.concatenate([capture(dev, core, pt0, key)[1] for _ in range(4)])
+        mx, mn, sd = int(a.max()), int(a.min()), float(a.std())
+        if verbose:
+            print(f"    shift={shift}: raw min={mn} max={mx} std={sd:.1f}")
+        # we want a maximum comfortably inside 0..255 and not stuck at 0
+        if mx < 250 and mx > 20:
+            best = shift
+            break
+    if best is None:
+        best = 5
+    # centre: aim the mean near 128 using the offset
+    set_calibration(dev, best, 0)
+    a = np.concatenate([capture(dev, core, pt0, key)[1] for _ in range(6)])
+    off = max(0, min(255, int(a.mean()) - 128))
+    set_calibration(dev, best, off)
+    if verbose:
+        b = np.concatenate([capture(dev, core, pt0, key)[1] for _ in range(6)])
+        print(f"  calibrated: shift={best} off={off} -> "
+              f"min={int(b.min())} max={int(b.max())} mean={b.mean():.1f} std={b.std():.1f}")
+    return best, off
 
 
 def capture(dev, core, plaintext, key, protected=False):

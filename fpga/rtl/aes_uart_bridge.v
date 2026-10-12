@@ -88,6 +88,8 @@ module aes_uart_bridge #(
     output reg          cap_protected,
     output reg  [127:0] cap_key,
     output reg  [127:0] cap_pt,
+    output reg  [2:0]   cap_shift,       // sensor calibration (cmd 0x51)
+    output reg  [7:0]   cap_off,
     input  wire         cap_busy,
     input  wire         cap_done,
     input  wire [127:0] cap_ct,
@@ -271,6 +273,8 @@ module aes_uart_bridge #(
             cap_protected <= 1'b0;
             cap_key       <= 128'd0;
             cap_pt        <= 128'd0;
+            cap_shift     <= 3'd0;
+            cap_off       <= 8'd0;
             traddr        <= {(TRACE_AW+1){1'b0}};
             trace_raddr   <= {TRACE_AW{1'b0}};
         end else begin
@@ -347,6 +351,13 @@ module aes_uart_bridge #(
                             cap_protected <= arg[8];
                             cap_trigger   <= 1'b1;
                             xs            <= X_CAPWAIT;
+                        end
+                        // set sensor calibration: arg[2:0]=shift, arg[15:8]=off
+                        8'h51: begin
+                            cap_shift <= arg[2:0];
+                            cap_off   <= arg[15:8];
+                            resp      <= {8'h51, 8'h00, 32'd0, 128'd0};
+                            xs        <= X_TX;
                         end
                         default: begin
                             resp <= {8'hee, cmd, 32'd0, 128'd0};

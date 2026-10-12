@@ -36,6 +36,8 @@ module sca_unit #(
     input  wire         protected_mode,
     input  wire [127:0] key,
     input  wire [127:0] plaintext,
+    input  wire [2:0]   cal_shift,                   // sensor calibration (cmd 0x51)
+    input  wire [7:0]   cal_off,
 
     output reg          busy,
     output reg          done,                        // 1-cycle pulse when trace ready
@@ -92,7 +94,8 @@ module sca_unit #(
     wire [7:0] activity = core_busy ? (core_pt[7:0] ^ core_key[7:0] ^ smp_idx[7:0])
                                     : (noise_en ? rnd[7:0] : 8'd0);
     wire [7:0] sensor;
-    tdc_sensor u_tdc (.clk(clk), .rst_n(rst_n), .activity(activity), .sample(sensor));
+    tdc_sensor u_tdc (.clk(clk), .rst_n(rst_n), .shift(cal_shift), .off(cal_off),
+                      .activity(activity), .sample(sensor));
 
     //-------------------------------------------------------------------------
     // Trace RAM

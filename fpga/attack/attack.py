@@ -150,6 +150,10 @@ def main():
 
     dev = collect.connect(port=args.port, server=args.server)
 
+    # calibrate the on-chip sensor into range (software sweep, no rebuild)
+    print("  calibrating on-chip sensor...")
+    collect.auto_calibrate(dev, core=args.core, key=DEMO_KEY)
+
     if args.mode == "tvla":
         tf, tr = gather_tvla(dev, args.core, args.n, args.protected, args.seed)
         tag = f"{core_name}_{'prot' if args.protected else 'unprot'}"

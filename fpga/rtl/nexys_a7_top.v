@@ -227,6 +227,8 @@ module nexys_a7_top #(
     localparam integer TRACE_AW  = 8;
     wire               cap_trigger, cap_protected, cap_busy, cap_done;
     wire [127:0]       cap_key, cap_pt, cap_ct;
+    wire [2:0]         cap_shift;
+    wire [7:0]         cap_off;
     wire [TRACE_AW-1:0] trace_raddr;
     wire [7:0]         trace_rdata;
 
@@ -237,6 +239,8 @@ module nexys_a7_top #(
         .protected_mode (cap_protected),
         .key            (cap_key),
         .plaintext      (cap_pt),
+        .cal_shift      (cap_shift),
+        .cal_off        (cap_off),
         .busy           (cap_busy),
         .done           (cap_done),
         .ciphertext     (cap_ct),
@@ -282,6 +286,8 @@ module nexys_a7_top #(
         .cap_protected(cap_protected),
         .cap_key      (cap_key),
         .cap_pt       (cap_pt),
+        .cap_shift    (cap_shift),
+        .cap_off      (cap_off),
         .cap_busy     (cap_busy),
         .cap_done     (cap_done),
         .cap_ct       (cap_ct),

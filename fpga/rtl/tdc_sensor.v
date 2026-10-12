@@ -3,36 +3,40 @@
 //
 // A time-to-digital converter made from the FPGA's own carry chain. Every
 // clock a launch edge is fired into a long CARRY4 delay line; how far it
-// propagates in one clock period depends on the transistor delay, which
-// depends on the core supply voltage, which dips a little every time the
-// nearby AES logic switches. Sampling the chain and counting how many taps
-// the edge reached gives a number that rises and falls with the chip's
-// instantaneous power draw -- the same signal an attacker would normally
-// need an oscilloscope and a probe to see.
+// propagates in one clock period depends on transistor delay, which depends
+// on the core supply voltage, which dips every time the nearby AES logic
+// switches. Counting how many taps the edge reached gives a number that
+// tracks the chip's instantaneous power draw -- the signal an attacker would
+// normally need an oscilloscope and a probe to see.
 //
-//   sample (8 bit) = population count of the delay-line taps, one per clock
+// Calibration without rebuilding: the raw tap count can be hundreds, while a
+// trace sample is one byte, and the useful (data-dependent) swing is only a
+// few taps sitting on a large DC level. So the readout is HOST-TUNABLE:
 //
-// This is a passive observer: it is wired to nothing in the AES datapath and
-// cannot change the ciphertext. It only exists in the capture unit and is
-// idle unless a trace is being recorded.
+//     sample = clamp( (popcount >> shift) - off , 0 , 255 )
 //
-// For simulation (no CARRY4 primitive) a behavioural model stands in: it is
-// driven by `activity`, a running bit-switch estimate of the AES state, so
-// the testbench produces data-dependent traces and the tool-chain can be
-// exercised without the board. Define SYNTHESIS for the real sensor.
+// The host sweeps `shift`/`off` (command 0x51) until the samples sit in the
+// middle of 0..255 with real variance -- turning sensor calibration into a
+// software sweep instead of a 20-minute re-synthesis.
+//
+// This is a passive observer wired to nothing in the AES datapath; it cannot
+// change the ciphertext. Define SYNTHESIS for the real sensor; a behavioural
+// model stands in for simulation.
 //=============================================================================
 `timescale 1ns / 1ps
 `default_nettype none
 
 module tdc_sensor #(
-    parameter integer NBLK = 32          // CARRY4 blocks -> NBLK*4 taps
+    parameter integer NBLK = 256                 // CARRY4 blocks -> NBLK*4 taps
 ) (
     input  wire        clk,
     input  wire        rst_n,
-    input  wire [7:0]  activity,         // sim-only: switching estimate
+    input  wire [2:0]  shift,                     // host calibration: right-shift
+    input  wire [7:0]  off,                       // host calibration: DC offset
+    input  wire [7:0]  activity,                  // sim-only switching estimate
     output reg  [7:0]  sample
 );
-    localparam integer NTAPS = NBLK * 4;
+    localparam integer NTAPS = NBLK * 4;          // 1024 taps by default
 
     // launch edge, toggles every clock so there is always a transition to time
     reg launch = 1'b0;
@@ -40,9 +44,10 @@ module tdc_sensor #(
 
 `ifdef SYNTHESIS
     //-------------------------------------------------------------------------
-    // Real delay line: NBLK CARRY4s in series, all stages set to propagate
-    // (S = 1111) so the launch level ripples down the carry chain. The chain
-    // is sampled into FFs; the number of high taps is the delay measurement.
+    // Long delay line: NBLK CARRY4s in series, every stage set to propagate
+    // (S = 1111) so the launch level ripples down the carry chain. Making the
+    // chain much longer than one period's worth of propagation guarantees the
+    // edge lands partway along it, so the tap count is graded (not railed).
     //-------------------------------------------------------------------------
     wire [NTAPS-1:0] co;
     genvar i;
@@ -67,22 +72,33 @@ module tdc_sensor #(
         tap_qq <= tap_q;
     end
 
+    // Two-stage population count so a 1024-input add never sits on one clock:
+    // stage 1 sums four quarter-chains, stage 2 adds the quarters.
+    localparam integer Q = NTAPS / 4;
     integer b;
-    reg [15:0] pc;
+    reg [11:0] q0, q1, q2, q3;
+    reg [12:0] pc;
     always @(posedge clk) begin
-        if (!rst_n) begin
-            sample <= 8'd0;
-        end else begin
-            pc = 16'd0;
-            for (b = 0; b < NTAPS; b = b + 1) pc = pc + tap_qq[b];
-            sample <= (pc > 16'd255) ? 8'd255 : pc[7:0];
-        end
+        q0 = 12'd0; q1 = 12'd0; q2 = 12'd0; q3 = 12'd0;
+        for (b = 0;     b < Q;     b = b + 1) q0 = q0 + tap_qq[b];
+        for (b = Q;     b < 2*Q;   b = b + 1) q1 = q1 + tap_qq[b];
+        for (b = 2*Q;   b < 3*Q;   b = b + 1) q2 = q2 + tap_qq[b];
+        for (b = 3*Q;   b < NTAPS; b = b + 1) q3 = q3 + tap_qq[b];
+        pc <= q0 + q1 + q2 + q3;
+    end
+
+    // host-tunable mapping of the big count into one byte
+    wire [12:0] sh  = pc >> shift;
+    wire [12:0] sub = (sh > {5'd0, off}) ? (sh - {5'd0, off}) : 13'd0;
+    always @(posedge clk) begin
+        if (!rst_n) sample <= 8'd0;
+        else        sample <= (sub > 13'd255) ? 8'd255 : sub[7:0];
     end
 `else
     //-------------------------------------------------------------------------
-    // Behavioural stand-in for simulation: delay-line length modulated by the
-    // AES switching activity plus a little pseudo-random jitter, so captured
-    // traces are data-dependent and the host tool-chain can be tested.
+    // Behavioural stand-in for simulation: a centred value modulated by the
+    // AES switching activity plus LFSR jitter, so captured traces are
+    // data-dependent and the host tool-chain can be tested without the board.
     //-------------------------------------------------------------------------
     reg [15:0] jit = 16'hACE1;
     always @(posedge clk) begin
@@ -91,11 +107,12 @@ module tdc_sensor #(
             sample <= 8'd0;
         end else begin
             jit    <= {jit[14:0], jit[15] ^ jit[13] ^ jit[12] ^ jit[10]};
-            // centre ~100, swing with activity, dither with the LFSR
             sample <= 8'd100 + activity[7:2] + {4'd0, jit[3:0]}
                       + (launch ? 8'd2 : 8'd0);
         end
     end
+    // reference the calibration inputs so they are not flagged unused in sim
+    wire _unused_cal = &{1'b0, shift, off};
 `endif
 
 endmodule
