@@ -222,11 +222,35 @@ module nexys_a7_top #(
     reg  [2:0]  rgb17_man  = 3'd0;
     reg  [15:0] led_man    = 16'd0;
 
+    // side-channel capture unit (command 0x50) -- self-contained, additive
+    localparam integer TRACE_LEN = 256;
+    localparam integer TRACE_AW  = 8;
+    wire               cap_trigger, cap_protected, cap_busy, cap_done;
+    wire [127:0]       cap_key, cap_pt, cap_ct;
+    wire [TRACE_AW-1:0] trace_raddr;
+    wire [7:0]         trace_rdata;
+
+    sca_unit #(.TRACE_LEN(TRACE_LEN), .AW(TRACE_AW)) u_sca (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .trigger        (cap_trigger),
+        .protected_mode (cap_protected),
+        .key            (cap_key),
+        .plaintext      (cap_pt),
+        .busy           (cap_busy),
+        .done           (cap_done),
+        .ciphertext     (cap_ct),
+        .trace_raddr    (trace_raddr),
+        .trace_rdata    (trace_rdata)
+    );
+
     aes_uart_bridge #(
         .CLKS_PER_BIT (CLK_HZ / BAUD),
         .RX_TIMEOUT   (RX_TIMEOUT),
         .CLK_MHZ      (CLK_HZ / 1_000_000),
-        .BAUD_100K    (BAUD / 100_000)
+        .BAUD_100K    (BAUD / 100_000),
+        .TRACE_LEN    (TRACE_LEN),
+        .TRACE_AW     (TRACE_AW)
     ) u_bridge (
         .clk          (clk),
         .rst_n        (rst_n),
@@ -254,6 +278,15 @@ module nexys_a7_top #(
         .bist_trigger (bist_trigger),
         .bist_busy    (bist_busy),
         .bist_status  (bist_status),
+        .cap_trigger  (cap_trigger),
+        .cap_protected(cap_protected),
+        .cap_key      (cap_key),
+        .cap_pt       (cap_pt),
+        .cap_busy     (cap_busy),
+        .cap_done     (cap_done),
+        .cap_ct       (cap_ct),
+        .trace_raddr  (trace_raddr),
+        .trace_rdata  (trace_rdata),
         .switches     (sw_s),
         .buttons      (btn_s | btn_latch),
         .temp         (temp),

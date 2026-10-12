@@ -48,9 +48,17 @@ add_files -norecurse -fileset sources_1 [list \
     $root/fpga/rtl/aes_uart_bridge.v \
     $root/fpga/rtl/seg7_ctrl.v \
     $root/fpga/rtl/xadc_mon.v \
+    $root/fpga/rtl/tdc_sensor.v \
+    $root/fpga/rtl/rng_lfsr.v \
+    $root/fpga/rtl/noise_gen.v \
+    $root/fpga/rtl/sca_unit.v \
     $root/fpga/rtl/nexys_a7_top.v \
 ]
 set_property top nexys_a7_top [get_filesets sources_1]
+
+# SYNTHESIS selects the real XADC and the real CARRY4 delay-line sensor
+# (the behavioural stand-ins are for simulation only)
+set_property verilog_define {SYNTHESIS=1} [get_filesets sources_1]
 
 #------------------------------------------------------------------------------
 # Constraints

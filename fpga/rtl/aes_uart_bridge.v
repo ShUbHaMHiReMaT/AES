@@ -43,7 +43,9 @@ module aes_uart_bridge #(
     parameter integer CLKS_PER_BIT = 100,           // 1 Mbaud at 100 MHz
     parameter integer RX_TIMEOUT   = 2_000_000,     // 20 ms
     parameter [7:0]   CLK_MHZ      = 8'd100,
-    parameter [7:0]   BAUD_100K    = 8'd10          // baud / 100000
+    parameter [7:0]   BAUD_100K    = 8'd10,          // baud / 100000
+    parameter integer TRACE_LEN    = 256,            // sensor samples per trace
+    parameter integer TRACE_AW     = 8               // ceil(log2(TRACE_LEN))
 ) (
     input  wire         clk,
     input  wire         rst_n,
@@ -81,6 +83,17 @@ module aes_uart_bridge #(
     input  wire         bist_busy,
     input  wire [7:0]   bist_status,
 
+    // side-channel capture unit (command 0x50)
+    output reg          cap_trigger,
+    output reg          cap_protected,
+    output reg  [127:0] cap_key,
+    output reg  [127:0] cap_pt,
+    input  wire         cap_busy,
+    input  wire         cap_done,
+    input  wire [127:0] cap_ct,
+    output reg  [TRACE_AW-1:0] trace_raddr,
+    input  wire [7:0]   trace_rdata,
+
     // board state for the status command
     input  wire [15:0]  switches,
     input  wire [4:0]   buttons,
@@ -101,6 +114,7 @@ module aes_uart_bridge #(
 
     localparam integer REQ_BYTES  = 37;
     localparam integer RESP_BYTES = 22;
+    localparam [31:0]  TRACE_LEN32 = TRACE_LEN;
 
     //-------------------------------------------------------------------------
     // UART
@@ -125,13 +139,21 @@ module aes_uart_bridge #(
                      X_DISPW    = 4'd3,
                      X_BIST     = 4'd4,
                      X_BISTWAIT = 4'd5,
-                     X_TX       = 4'd6;
+                     X_TX       = 4'd6,
+                     X_CAPWAIT  = 4'd7,
+                     X_TRACE    = 4'd8,   // set read address
+                     X_TRACE2   = 4'd9;   // send the byte just read
 
-    wire tx_start = (xs == X_TX) && !tx_busy;
+    reg [TRACE_AW:0] traddr;             // 0..TRACE_LEN
+
+    // the 22-byte header streams out of `resp`; the trace bytes that follow
+    // stream straight from the trace RAM
+    wire [7:0] tx_data  = (xs == X_TRACE2) ? trace_rdata : resp[175:168];
+    wire       tx_start = ((xs == X_TX) || (xs == X_TRACE2)) && !tx_busy;
     uart_tx #(.CLKS_PER_BIT(CLKS_PER_BIT)) u_tx (
         .clk   (clk),
         .rst_n (rst_n),
-        .data  (resp[175:168]),
+        .data  (tx_data),
         .start (tx_start),
         .busy  (tx_busy),
         .tx    (uart_tx)
@@ -245,12 +267,19 @@ module aes_uart_bridge #(
             bist_trigger <= 1'b0;
             status_read  <= 1'b0;
             frames_done  <= 32'd0;
+            cap_trigger   <= 1'b0;
+            cap_protected <= 1'b0;
+            cap_key       <= 128'd0;
+            cap_pt        <= 128'd0;
+            traddr        <= {(TRACE_AW+1){1'b0}};
+            trace_raddr   <= {TRACE_AW{1'b0}};
         end else begin
             disp_we      <= 1'b0;
             disp_commit  <= 1'b0;
             led_we       <= 1'b0;
             bist_trigger <= 1'b0;
             status_read  <= 1'b0;
+            cap_trigger  <= 1'b0;
 
             case (xs)
                 X_IDLE:
@@ -309,6 +338,16 @@ module aes_uart_bridge #(
                             bist_trigger <= 1'b1;
                             xs           <= X_BIST;
                         end
+                        // side-channel trace capture: encrypt `data` on the
+                        // capture unit's own core while recording the sensor;
+                        // arg[8] selects the protected (hiding) mode
+                        8'h50: begin
+                            cap_key       <= key;
+                            cap_pt        <= data;
+                            cap_protected <= arg[8];
+                            cap_trigger   <= 1'b1;
+                            xs            <= X_CAPWAIT;
+                        end
                         default: begin
                             resp <= {8'hee, cmd, 32'd0, 128'd0};
                             xs   <= X_TX;
@@ -350,14 +389,47 @@ module aes_uart_bridge #(
                         xs   <= X_TX;
                     end
 
+                // wait for the capture unit, then send the 22-byte header
+                // (echo, status, aux = TRACE_LEN, ciphertext) and fall into
+                // the trace stream
+                X_CAPWAIT:
+                    if (cap_done) begin
+                        resp <= {8'h50, 8'h00, TRACE_LEN32, cap_ct};
+                        n_tx <= 5'd0;
+                        xs   <= X_TX;
+                    end
+
                 X_TX:
                     if (tx_start) begin
                         resp <= {resp[167:0], 8'h00};
                         if (n_tx == RESP_BYTES - 1) begin
+                            if (cmd == 8'h50) begin
+                                traddr      <= {(TRACE_AW+1){1'b0}};
+                                trace_raddr <= {TRACE_AW{1'b0}};
+                                xs          <= X_TRACE;
+                            end else begin
+                                frames_done <= frames_done + 32'd1;
+                                xs          <= X_IDLE;
+                            end
+                        end else begin
+                            n_tx <= n_tx + 5'd1;
+                        end
+                    end
+
+                // trace RAM is a registered read: set the address in X_TRACE,
+                // send the byte that appears one cycle later in X_TRACE2
+                X_TRACE: begin
+                    trace_raddr <= traddr[TRACE_AW-1:0];
+                    xs          <= X_TRACE2;
+                end
+                X_TRACE2:
+                    if (tx_start) begin
+                        if (traddr == TRACE_LEN - 1) begin
                             frames_done <= frames_done + 32'd1;
                             xs          <= X_IDLE;
                         end else begin
-                            n_tx <= n_tx + 5'd1;
+                            traddr <= traddr + 1'b1;
+                            xs     <= X_TRACE;
                         end
                     end
 
