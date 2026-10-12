@@ -27,7 +27,7 @@
 `default_nettype none
 
 module tdc_sensor #(
-    parameter integer NBLK = 128                 // CARRY4 blocks -> NBLK*4 taps
+    parameter integer NBLK = 1024                // CARRY4 blocks -> NBLK*4 taps
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -72,27 +72,32 @@ module tdc_sensor #(
         tap_qq <= tap_q;
     end
 
-    // Two-stage population count so a 1024-input add never sits on one clock:
-    // stage 1 sums four quarter-chains, stage 2 adds the quarters.
-    localparam integer Q = NTAPS / 4;
-    integer b;
-    reg [11:0] q0, q1, q2, q3;
-    reg [12:0] pc;
+    // Two-stage population count that scales to any chain length without the
+    // per-clock adder ever growing: stage 1 counts each fixed 128-bit chunk
+    // (same size whatever NTAPS is), stage 2 sums the chunk counts.
+    localparam integer NCH = NTAPS / 128;         // chunks of 128 taps
+    reg [7:0]  part [0:NCH-1];
+    reg [15:0] pc;
+    integer c, b;
+    reg [7:0]  ctmp;
+    reg [15:0] acc;
     always @(posedge clk) begin
-        q0 = 12'd0; q1 = 12'd0; q2 = 12'd0; q3 = 12'd0;
-        for (b = 0;     b < Q;     b = b + 1) q0 = q0 + tap_qq[b];
-        for (b = Q;     b < 2*Q;   b = b + 1) q1 = q1 + tap_qq[b];
-        for (b = 2*Q;   b < 3*Q;   b = b + 1) q2 = q2 + tap_qq[b];
-        for (b = 3*Q;   b < NTAPS; b = b + 1) q3 = q3 + tap_qq[b];
-        pc <= q0 + q1 + q2 + q3;
+        for (c = 0; c < NCH; c = c + 1) begin
+            ctmp = 8'd0;
+            for (b = 0; b < 128; b = b + 1) ctmp = ctmp + tap_qq[c*128 + b];
+            part[c] <= ctmp;                      // stage 1 (registered)
+        end
+        acc = 16'd0;
+        for (c = 0; c < NCH; c = c + 1) acc = acc + part[c];
+        pc <= acc;                                // stage 2 (prev chunk counts)
     end
 
     // host-tunable mapping of the big count into one byte
-    wire [12:0] sh  = pc >> shift;
-    wire [12:0] sub = (sh > {5'd0, off}) ? (sh - {5'd0, off}) : 13'd0;
+    wire [15:0] sh  = pc >> shift;
+    wire [15:0] sub = (sh > {8'd0, off}) ? (sh - {8'd0, off}) : 16'd0;
     always @(posedge clk) begin
         if (!rst_n) sample <= 8'd0;
-        else        sample <= (sub > 13'd255) ? 8'd255 : sub[7:0];
+        else        sample <= (sub > 16'd255) ? 8'd255 : sub[7:0];
     end
 `else
     //-------------------------------------------------------------------------
