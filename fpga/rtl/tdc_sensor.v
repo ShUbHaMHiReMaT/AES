@@ -27,7 +27,7 @@
 `default_nettype none
 
 module tdc_sensor #(
-    parameter integer NBLK = 256                 // CARRY4 blocks -> NBLK*4 taps
+    parameter integer NBLK = 128                 // CARRY4 blocks -> NBLK*4 taps
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -36,7 +36,7 @@ module tdc_sensor #(
     input  wire [7:0]  activity,                  // sim-only switching estimate
     output reg  [7:0]  sample
 );
-    localparam integer NTAPS = NBLK * 4;          // 1024 taps by default
+    localparam integer NTAPS = NBLK * 4;          // 512 taps by default
 
     // launch edge, toggles every clock so there is always a transition to time
     reg launch = 1'b0;

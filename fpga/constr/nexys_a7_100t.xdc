@@ -89,6 +89,13 @@ set_property -dict { PACKAGE_PIN U13 IOSTANDARD LVCMOS33 } [get_ports { AN[7] }]
 set_false_path -from [get_ports { CPU_RESETN BTN* SW[*] UART_TXD_IN }]
 set_false_path -to   [get_ports { LED[*] LED16_* LED17_* SEG[*] DP AN[*] UART_RXD_OUT }]
 
+## TDC power sensor: the CARRY4 delay line is sampled WHILE the launch edge is
+## still propagating -- that partial, supply-dependent settling IS the
+## measurement. So the launch->chain->tap path must not be timed, and the taps
+## are captured into ASYNC_REG flip-flops. Without this the long carry chain
+## shows up as a ~29 ns false setup violation.
+set_false_path -to [get_cells -hier -filter {NAME =~ *u_tdc/tap_q_reg*}]
+
 ## Configuration
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]

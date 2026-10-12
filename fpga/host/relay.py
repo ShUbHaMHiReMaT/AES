@@ -13,14 +13,16 @@ exactly as if the serial port were local.
 
 Then on Kali:  python fpga/attack/attack.py --server <windows-ip>:5555 ...
 
-Only one client at a time (a trace capture is a single tight request/reply
-loop and must not be interleaved). Nothing here changes the board or its
-normal operation -- the same relay works for aes_board_test.py over TCP too.
+It is meant to stay up: the TCP listener never closes, clients are served one
+at a time, and if the serial port drops (e.g. the FPGA is reprogrammed) it is
+reopened automatically. Nothing here changes the board or its normal
+operation -- the same relay works for aes_board_test.py over TCP too.
 """
 import argparse
 import socket
 import sys
 import threading
+import time
 
 try:
     import serial
@@ -37,37 +39,87 @@ def find_port():
     return sorted(ports, key=lambda p: p.device)[-1].device
 
 
-def pump(src_read, dst_write, name, stop):
+class SerialHub:
+    """A serial port that reopens itself if the handle goes bad."""
+
+    def __init__(self, port, baud):
+        self.port, self.baud = port, baud
+        self.ser = None
+        self.lock = threading.Lock()
+        self._open()
+
+    def _open(self):
+        while True:
+            try:
+                self.ser = serial.Serial(self.port, self.baud, timeout=0.02)
+                return
+            except serial.SerialException as e:
+                print(f"  waiting for {self.port}: {e}")
+                time.sleep(1.0)
+
+    def reopen(self):
+        with self.lock:
+            try:
+                if self.ser:
+                    self.ser.close()
+            except Exception:
+                pass
+            self._open()
+            print(f"  serial {self.port} reopened")
+
+    def read(self, n):
+        try:
+            return self.ser.read(n)
+        except (OSError, serial.SerialException):
+            self.reopen()
+            return b""
+
+    def write(self, b):
+        try:
+            self.ser.write(b)
+        except (OSError, serial.SerialException):
+            self.reopen()
+
+    def reset(self):
+        try:
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
+        except Exception:
+            pass
+
+
+def pump(src_read, dst_write, stop):
     try:
         while not stop.is_set():
             data = src_read()
             if data:
                 dst_write(data)
-    except (OSError, serial.SerialException):
+    except OSError:
         pass
     finally:
         stop.set()
 
 
-def serve(ser, host, port):
+def serve(hub, host, port):
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((host, port))
     srv.listen(1)
-    print(f"Relay up: {ser.port} @ {ser.baudrate} baud  <->  TCP {host}:{port}")
-    print("Waiting for a client (Ctrl-C to quit)...")
+    print(f"Relay up: {hub.port} @ {hub.baud} baud  <->  TCP {host}:{port}", flush=True)
+    print("Listening (stays up; Ctrl-C to quit)...", flush=True)
     while True:
-        conn, addr = srv.accept()
+        try:
+            conn, addr = srv.accept()
+        except KeyboardInterrupt:
+            print("\nbye")
+            return
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        print(f"  client connected: {addr[0]}:{addr[1]}")
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
+        print(f"  client connected: {addr[0]}:{addr[1]}", flush=True)
+        hub.reset()
         stop = threading.Event()
-        # serial -> socket
-        ser.timeout = 0.02
         t1 = threading.Thread(target=pump,
-                              args=(lambda: ser.read(4096), conn.sendall,
-                                    "ser->net", stop), daemon=True)
+                              args=(lambda: hub.read(4096), conn.sendall, stop),
+                              daemon=True)
 
         def sock_read():
             conn.settimeout(0.02)
@@ -79,18 +131,19 @@ def serve(ser, host, port):
                 return b""
 
         t2 = threading.Thread(target=pump,
-                              args=(sock_read, ser.write, "net->ser", stop),
-                              daemon=True)
-        t1.start()
-        t2.start()
+                              args=(sock_read, hub.write, stop), daemon=True)
+        t1.start(); t2.start()
         try:
             stop.wait()
         except KeyboardInterrupt:
             print("\nbye")
             conn.close()
             return
-        conn.close()
-        print("  client disconnected")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        print("  client disconnected (still listening)", flush=True)
 
 
 def main():
@@ -101,13 +154,11 @@ def main():
     args = ap.parse_args()
 
     host, _, port = args.listen.partition(":")
-    ser = serial.Serial(args.port or find_port(), args.baud, timeout=0.02)
+    hub = SerialHub(args.port or find_port(), args.baud)
     try:
-        serve(ser, host or "0.0.0.0", int(port))
+        serve(hub, host or "0.0.0.0", int(port))
     except KeyboardInterrupt:
         print("\nbye")
-    finally:
-        ser.close()
 
 
 if __name__ == "__main__":

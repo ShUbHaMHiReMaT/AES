@@ -1,10 +1,10 @@
 {
   "part": "xc7a100tcsg324-1",
-  "built": "2026-10-12 09:59",
+  "built": "2026-10-12 10:13",
   "clock_mhz": 100,
   "device": {"lut": 63400, "ff": 126800, "bram": 135, "dsp": 240},
-  "total": {"lut": 14948, "ff": 8062, "bram": 0, "dsp": 0},
-  "timing": {"wns_ns": 0.768, "whs_ns": 0.023, "fmax_mhz": 108.3},
-  "power_w": {"total": 0.652, "dynamic": 0.553, "static": 0.099},
-  "cores": {"iterative": {"name": "aes128_iterative", "lut": 1228, "ff": 398, "slack_ns": 1.721, "fmax_mhz": 120.8}, "ii10": {"name": "aes128_iterative_ii10", "lut": 1421, "ff": 655, "slack_ns": 0.768, "fmax_mhz": 108.3}, "pipelined": {"name": "aes128_pipelined", "lut": 9393, "ff": 2699, "slack_ns": 1.483, "fmax_mhz": 117.4}, "bridge": {"name": "UART bridge", "lut": 938, "ff": 1889, "slack_ns": 1.008, "fmax_mhz": 111.2}}
+  "total": {"lut": 16803, "ff": 9887, "bram": 0, "dsp": 0},
+  "timing": {"wns_ns": -24.311, "whs_ns": 0.021, "fmax_mhz": 29.1},
+  "power_w": {"total": 0.875, "dynamic": 0.776, "static": 0.100},
+  "cores": {"iterative": {"name": "aes128_iterative", "lut": 1262, "ff": 398, "slack_ns": -2.626, "fmax_mhz": 79.2}, "ii10": {"name": "aes128_iterative_ii10", "lut": 1461, "ff": 662, "slack_ns": -3.583, "fmax_mhz": 73.6}, "pipelined": {"name": "aes128_pipelined", "lut": 9392, "ff": 2699, "slack_ns": -11.157, "fmax_mhz": 47.3}, "bridge": {"name": "UART bridge", "lut": 954, "ff": 1903, "slack_ns": -7.614, "fmax_mhz": 56.8}}
 }
